@@ -1,1 +1,13 @@
+venv/ (or .venv/)
+
+__pycache__/, *.py[cod], .Python
+
+build/, dist/, *.egg-info/
+
+.pytest_cache/, .mypy_cache/, .coverage*
+
+.env, .vscode/, .idea/, .DS_Store
+venv/
 .venv/
+__pycache__/
+*.py[cod]
