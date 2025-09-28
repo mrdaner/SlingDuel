@@ -1,7 +1,8 @@
 import pygame
+from circleshape import CircleShape
 from constants import *
 
-class Player(pygame.sprite.Sprite):
+class Player(CircleShape):
     def __init__(self):
         super().__init__()
         self.image = pygame.image.load('graphics/player/hero_blue.png').convert_alpha
