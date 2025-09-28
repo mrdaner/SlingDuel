@@ -3,19 +3,22 @@ from sys import exit
 from constants import *
 
 
-def display_score():
-    current_time = pygame.time.get_ticks()
-    score_surf = game_font.render(f'{current_time}',False,(64,64,64))
-    score_rect = score_surf.get_rect(center = (400, 50))
+def display_score(game_font, screen, start_time):
+    current_time = int(pygame.time.get_ticks() / 1000) - start_time
+    score_surf = game_font.render(f'Score: {current_time}',False,(64,64,64))
+    score_rect = score_surf.get_rect(center=(400, 50))
     screen.blit(score_surf, score_rect)
+    return current_time
 
 def main():
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption('SlingDuel')
     clock = pygame.time.Clock()
-    test_font = pygame.font.Font('graphics/ByteBounce.ttf', 100)
-    game_active = True
+    game_font = pygame.font.Font('graphics/ByteBounce.ttf', 100)
+    game_active = False
+    start_time = 0
+    score = 0
 
     # updatable = pygame.sprite.Group()
     # drawable = pygame.sprite.Group()
@@ -40,6 +43,16 @@ def main():
     hero_rect = hero_surf.get_rect(midbottom = (200, 680))
     hero_gravity = PLAYER_GRAVITY
 
+    #intro screen
+    hero_stand = pygame.image.load('graphics/Hero/Hero_stand.png').convert_alpha()     #intro screen
+    hero_stand = pygame.transform.rotozoom(hero_stand, 0, 2) #scaled hero_stand
+    hero_stand_rect = hero_stand.get_rect(center = (SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2))     #intro screen
+
+    game_name = game_font.render('Slingduel', False, (111,196,169))
+    game_name_rect = game_name.get_rect(center = (400, 130))
+
+    game_message = game_font.render('Press SPACE to START', False, (111,196,169))
+    game_message_rect = game_message.get_rect(center = (400,320))
 
     #BANANA
     banana_surf = pygame.image.load('graphics/banana.png')
@@ -66,6 +79,7 @@ def main():
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                     game_active = True
                     banana_rect.left = SCREEN_WIDTH
+                    start_time = int(pygame.time.get_ticks() / 1000)
 
 
         #GAME CODE
@@ -73,20 +87,19 @@ def main():
             screen.blit(sky_surf, (0, 0))
             screen.blit(ground_surf, (0, 0))
 
+            score = display_score(game_font, screen, start_time)
             # pygame.draw.rect(screen, 'White', text_rect, 6)
             # pygame.draw.rect(screen, 'White', text_rect)
             # screen.blit(text_surf, text_rect)
             # pygame.draw.rect(screen, 'White', health_rect)
             # screen.blit(health_surf, health_rect)
-            display_score()
+            display_score(game_font, screen, start_time)
 
 
             #TARGET VECTOR IDEA
             # pygame.draw.line(screen, 'White', hero_rect.center, pygame.mouse.get_pos(),5)
 
             # pygame.draw.ellipse(screen, 'Brown', pygame.Rect(50,200,100,130))
-
-
 
             #banana
 
@@ -111,7 +124,6 @@ def main():
             # else:
             #     print('nope')
 
-
             #PLAYER INPUT
 
             # keys = pygame.key.get_pressed()
@@ -125,10 +137,18 @@ def main():
 
         #ENDSCREEN code
         else:
-            screen.fill('Yellow')
+            screen.fill((94,129,162)) # these numbers are a tuple color
+            screen.blit(hero_stand, hero_stand_rect)
+
+            score_message = game_font.render(f'Your score: {score}', False, (111,196,169))
+            score_message_rect = score_message.get_rect(center = (400,330))
+            screen.blit(game_name, game_name_rect)
+            if score == 0:
+                screen.blit(game_message, game_message_rect)
+            else:
+                screen.blit(score_message, score_message_rect)
             if event.type == pygame.KEYDOWN:
                 game_active = True
-
 
         pygame.display.update()
         clock.tick(60)
