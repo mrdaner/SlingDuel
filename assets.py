@@ -63,7 +63,6 @@ def get_heart_half():
     surf = pygame.image.load(str(_ASSET_ROOT / "Heart_2.png")).convert_alpha()
     return _scale(surf)
 
-
 def get_banana_image():
     return _scale(load_image(_ASSET_ROOT / "Banana.png"))
 
@@ -71,27 +70,17 @@ def get_banana_splashed() -> pygame.Surface:
     surf = pygame.image.load(str(_ASSET_ROOT / "Banana_squashed.png")).convert_alpha()
     return _scale(surf)
 
-def get_hook():
-    surf = pygame.image.load(str(_ASSET_ROOT / "Hook.png")).convert_alpha()
-    return _scale(surf)
-
-def get_platform_images():
-    """Return a list of Floor_1..4 surfaces (scaled)."""
-    floor_dir = _ASSET_ROOT / "Floor"
-    imgs = []
-    for i in (1, 2, 3, 4):
-        p = floor_dir / f"Floor_{i}.png"
-        if p.exists():
-            imgs.append(_scale(load_image(p)))
-    return imgs
-
 def get_hook_image() -> pygame.Surface:
     return _scale(load_image(_ASSET_ROOT / "Hook.png"))
 
 def get_floor_images() -> list[pygame.Surface]:
+    """Return Floor_1..4 surfaces, first scaled by SCALE, then enlarged by +50%."""
     floors = []
     floor_dir = _ASSET_ROOT / "Floor"
     for i in (1, 2, 3, 4):
         p = floor_dir / f"Floor_{i}.png"
-        floors.append(_scale(load_image(p)))
+        if p.exists():
+            base = _scale(load_image(p))
+            bigger = pygame.transform.rotozoom(base, 0, 1.5)  # +50%
+            floors.append(bigger)
     return floors
