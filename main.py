@@ -1,7 +1,7 @@
 import pygame
 from random import choice
 from constants import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, COLOR_BG, OBSTACLE_TIMER_MS, OBSTACLE_EVENT
-from assets import get_background, get_font
+from assets import get_background, get_font, get_target, get_heart
 from sprites import Hero, Obstacle
 
 pygame.init()
@@ -14,18 +14,20 @@ game_font = get_font(size=100)
 # Backgrounds
 sky_surf, ground_surf = get_background()
 
+# Target
+target_surf = get_target()
+target_rect = target_surf.get_rect()
+
+#Health
+heart_surf = get_heart()
+
+
 # UI
 game_name = game_font.render("Slingduel", False, (111, 196, 169))
 game_name_rect = game_name.get_rect(center=(SCREEN_WIDTH // 2, 130))
 
 game_message = game_font.render("Press SPACE to START", False, (111, 196, 169))
 game_message_rect = game_message.get_rect(center=(SCREEN_WIDTH // 2, 320))
-
-intro_hero = pygame.transform.rotozoom(sky_surf, 0, 0)  # placeholder if you want a hero image here
-# if you prefer a hero image:
-# intro_hero = pygame.image.load('graphics/Hero/Hero_stand.png').convert_alpha()
-# intro_hero = pygame.transform.rotozoom(intro_hero, 0, 2)
-# intro_hero_rect = intro_hero.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
 
 # Groups
 hero = pygame.sprite.GroupSingle(Hero())
@@ -75,16 +77,28 @@ while True:
         screen.blit(sky_surf, (0, 0))
         screen.blit(ground_surf, (0, 0))
         score = display_score()
+
+        for i in range(5):  # 5 hearts
+            x = 20 + i * (heart_surf.get_width() + 10)   # spacing of 10px
+            y = 20
+            screen.blit(heart_surf, (x, y))
+
+
         hero.draw(screen)
+
+        mouse_or_aim = hero.sprite.get_aim_pos()
+        pygame.draw.line(screen, (255,255,255), hero.sprite.rect.center, mouse_or_aim, 3)
+        tr = target_surf.get_rect(center=mouse_or_aim)
+        screen.blit(target_surf, tr)
+
         obstacles.draw(screen)
 
-        # Collisions
+        # Collisions (temporarily disabled by your choice)
         if pygame.sprite.spritecollide(hero.sprite, obstacles, False):
-            pass# game_active = False                                             TEMPORARY###
+            pass  # game_active = False
 
     else:
         screen.fill(COLOR_BG)
-        # screen.blit(intro_hero, intro_hero_rect)  # if you set one
         screen.blit(game_name, game_name_rect)
         if score == 0:
             screen.blit(game_message, game_message_rect)

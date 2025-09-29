@@ -13,3 +13,5 @@ OBSTACLE_EVENT = 1  # we’ll offset by pygame.USEREVENT in main
 
 HERO_JUMP_FORCE = -25
 GRAVITY_PER_TICK = 1
+
+SCALE = 1/3

@@ -6,7 +6,9 @@ from constants import GROUND_Y
 class Obstacle(pygame.sprite.Sprite):
     def __init__(self, kind: str):
         super().__init__()
-        base = get_obstacle_base(kind)
+        base = get_obstacle_base(kind)  # already scaled in assets.py
+
+        # build rotated frames once from the scaled base
         self.frames = [
             base,
             pygame.transform.rotate(base, 90),
@@ -20,7 +22,8 @@ class Obstacle(pygame.sprite.Sprite):
             y = GROUND_Y
             self.speed = 10
         else:  # boss
-            y = GROUND_Y - 315  # matches your earlier 365 midbottom
+            # air obstacle height; adjust as you like for gameplay
+            y = GROUND_Y - 315
             self.speed = 10
 
         self.rect = self.image.get_rect(midbottom=(randint(900, 1100), y))

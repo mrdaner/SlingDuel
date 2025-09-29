@@ -1,0 +1,24 @@
+import pygame
+from throwable import Throwable
+
+class SlingHook(Throwable):
+    def __init__(self, pos, velocity, image, owner=None, rope_length=250):
+        super().__init__(pos, velocity, image, owner)
+        self.rope_length = rope_length
+        self.attached = False
+        self.retracting = False
+
+    def update(self):
+        if not self.attached:
+            # Move forward until it hits something or max rope length
+            self.rect.x += self.velocity.x
+            self.rect.y += self.velocity.y
+            # TODO: check collision or distance here
+        else:
+            # TODO: pull hero toward this point
+            pass
+
+    def on_hit(self, target):
+        # Instead of damaging, this one attaches
+        self.attached = True
+        # TODO: start pulling hero
