@@ -1,15 +1,29 @@
-venv/ (or .venv/)
-
-__pycache__/, *.py[cod], .Python
-
-build/, dist/, *.egg-info/
-
-.pytest_cache/, .mypy_cache/, .coverage*
-
-.env, .vscode/, .idea/, .DS_Store
-venv/
-.venv/
+# Python bytecode & caches
 __pycache__/
 *.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+.Python
+
+# Build & packaging
+build/
+dist/
+*.egg-info/
+
+# Testing & coverage
+.pytest_cache/
+.mypy_cache/
+.coverage*
+
+# Environment / IDE files
+.env
+.vscode/
+.idea/
+.DS_Store
+
+# Ignore Misc folder except .gitkeep
 Misc/*
-!.gitkeep
+!Misc/.gitkeep
