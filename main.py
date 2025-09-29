@@ -1,21 +1,100 @@
 import pygame
 from sys import exit
 from constants import *
-from random import randint
+from random import randint, choice
+
+class Hero(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        hero_stand = pygame.image.load('graphics/Hero/Hero_stand.png').convert_alpha()
+        hero_run_1 = pygame.image.load('graphics/Hero/Hero_run_1.png').convert_alpha()
+        hero_run_2 = pygame.image.load('graphics/Hero/Hero_run_2.png').convert_alpha()
+        hero_run_3 = pygame.image.load('graphics/Hero/Hero_run_3.png').convert_alpha()
+        hero_run_4 = pygame.image.load('graphics/Hero/Hero_run_4.png').convert_alpha()
+        self.hero_run = [hero_stand, hero_run_1, hero_run_2, hero_run_3, hero_run_4]
+        self.hero_run_index = 0.0
+
+        hero_jump_1 = pygame.image.load('graphics/Hero/Hero_jump_1.png').convert_alpha()
+        hero_jump_2 = pygame.image.load('graphics/Hero/Hero_jump_2.png').convert_alpha()
+        hero_jump_3 = pygame.image.load('graphics/Hero/Hero_jump_3.png').convert_alpha()
+        self.hero_jump = [hero_jump_1, hero_jump_2, hero_jump_3]
+        self.hero_jump_index = 0.0
+
+        self.image = self.hero_run[0]
+        self.rect = self.image.get_rect(midbottom=(200, 680))
+        self.gravity = 0
+
+    def hero_input(self):
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_SPACE] and self.rect.bottom >= 680:
+            self.gravity = -25
 
 
-def obstacle_movement(obstacle_list):
-    if obstacle_list:
-        for obstacle_rect in obstacle_list:
-            obstacle_rect.x -= 5
+    def apply_gravity(self):
+        self.gravity += 1
+        self.rect.y += self.gravity
+        if self.rect.bottom >= 680:
+            self.rect.bottom = 680
 
-            if obstacle_rect.bottom == 665:
-                screen.blit(banana_surf_current, obstacle_rect)
-            else:
-                screen.blit(boss_surf_current, obstacle_rect)
-        obstacle_list = [obstacle for obstacle in obstacle_list if obstacle.x > -100]
-        return obstacle_list
-    else: return []
+
+    def animate(self):
+        if self.rect.bottom < 680:  # jumping
+            self.hero_jump_index = (self.hero_jump_index + 0.1) % len(self.hero_jump)
+            self.image = self.hero_jump[int(self.hero_jump_index)]
+        else:  # running
+            self.hero_run_index = (self.hero_run_index + 0.4) % len(self.hero_run)
+            self.image = self.hero_run[int(self.hero_run_index)]
+
+    def update(self):
+        self.hero_input()
+        self.apply_gravity()
+        self.animate()
+
+
+class Obstacle(pygame.sprite.Sprite):
+    def __init__(self, kind):
+        super().__init__()
+
+        if kind == 'banana':
+            banana_surf = pygame.image.load('graphics/banana.png').convert_alpha()
+            self.frames = [
+                banana_surf,
+                pygame.transform.rotate(banana_surf, 90),
+                pygame.transform.rotate(banana_surf, 180),
+                pygame.transform.rotate(banana_surf, 270)
+            ]
+            y_pos = 665
+            self.speed = 10
+        else:  # 'boss'
+            boss_surf = pygame.image.load('graphics/boss.png').convert_alpha()
+            self.frames = [
+                boss_surf,
+                pygame.transform.rotate(boss_surf, 90),
+                pygame.transform.rotate(boss_surf, 180),
+                pygame.transform.rotate(boss_surf, 270)
+            ]
+            y_pos = 365
+            self.speed = 10
+
+        self.animation_index = 0.0
+        self.image = self.frames[0]
+        self.rect = self.image.get_rect(midbottom=(randint(900, 1100), y_pos))
+
+    
+    def animate(self):
+        self.animation_index = (self.animation_index + 0.2) % len(self.frames)
+        self.image = self.frames[int(self.animation_index)]
+
+    
+    def update(self):
+        self.rect.x -= self.speed
+        self.animate()
+
+
+    def destroy(self):
+        if self.rect.right < -100:
+            self.kill()
+
 
 
 def display_score(game_font, screen, start_time):
@@ -25,6 +104,7 @@ def display_score(game_font, screen, start_time):
     screen.blit(score_surf, score_rect)
     return current_time
 
+
 def collisions(hero, obstacles):
     if obstacles:
         for obstacle_rect in obstacles:
@@ -32,15 +112,6 @@ def collisions(hero, obstacles):
                 return False
     return True
 
-def hero_animation():
-    global hero_surf, hero_run_index, hero_jump_index
-
-    if hero_rect.bottom < 680:  # jumping
-        hero_jump_index = (hero_jump_index + 0.1) % len(hero_jump)
-        hero_surf = hero_jump[int(hero_jump_index)]
-    else:  # running
-        hero_run_index = (hero_run_index + 0.4) % len(hero_run)
-        hero_surf = hero_run[int(hero_run_index)]
 
 
 pygame.init()
@@ -51,6 +122,12 @@ game_font = pygame.font.Font('graphics/ByteBounce.ttf', 100)
 game_active = False
 start_time = 0
 score = 0
+
+#Groups
+hero = pygame.sprite.GroupSingle()
+hero.add(Hero())
+
+obstacle_group = pygame.sprite.Group()
 
 # updatable = pygame.sprite.Group()
 # drawable = pygame.sprite.Group()
@@ -70,24 +147,6 @@ ground_surf = pygame.image.load('graphics/Background/Ground.png').convert_alpha(
 # health_surf = font.render('Health', False, 'Black')
 # health_rect = health_surf.get_rect(center = (SCREEN_WIDTH / 10, SCREEN_HEIGHT / 10))
 
-#HERO
-hero_stand = pygame.image.load('graphics/Hero/Hero_stand.png').convert_alpha()
-hero_run_1 = pygame.image.load('graphics/Hero/Hero_run_1.png').convert_alpha()
-hero_run_2 = pygame.image.load('graphics/Hero/Hero_run_2.png').convert_alpha()
-hero_run_3 = pygame.image.load('graphics/Hero/Hero_run_3.png').convert_alpha()
-hero_run_4 = pygame.image.load('graphics/Hero/Hero_run_4.png').convert_alpha()
-hero_run = [hero_stand, hero_run_1, hero_run_2, hero_run_3, hero_run_4]
-hero_run_index = 0
-
-hero_jump_1 = pygame.image.load('graphics/Hero/Hero_jump_1.png').convert_alpha()
-hero_jump_2 = pygame.image.load('graphics/Hero/Hero_jump_2.png').convert_alpha()
-hero_jump_3 = pygame.image.load('graphics/Hero/Hero_jump_3.png').convert_alpha()
-hero_jump = [hero_jump_1, hero_jump_2, hero_jump_3]
-hero_jump_index = 0
-
-hero_surf = hero_run[hero_run_index]
-hero_rect = hero_surf.get_rect(midbottom = (200, 680))
-hero_gravity = PLAYER_GRAVITY
 
 #intro screen
 hero_stand = pygame.image.load('graphics/Hero/Hero_stand.png').convert_alpha()     #intro screen
@@ -122,7 +181,6 @@ boss_frames = [
 ]
 boss_index = 0
 boss_surf_current = boss_frames[boss_index]
-obstacle_rect_list = []
 
 
 #Timer
@@ -143,13 +201,12 @@ while True:
             exit()
         if game_active:
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE and hero_rect.bottom >= 680:
-                    print("pressing space")
-                    hero_gravity = -25
+                if event.key == pygame.K_SPACE and hero.sprite.rect.bottom >= 680:
+                    hero.sprite.gravity = -25
 
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if hero_rect.collidepoint(event.pos):
-                    hero_gravity = -25
+                if hero.sprite.rect.collidepoint(event.pos):
+                    hero.sprite.gravity = -25
         else:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 game_active = True
@@ -157,10 +214,9 @@ while True:
     
         if game_active:
             if event.type == obstacle_timer:
-                if randint(0, 2):
-                    obstacle_rect_list.append(banana_surf.get_rect(midbottom = (randint(800,1100), 665)))
-                else:
-                    obstacle_rect_list.append(boss_surf.get_rect(midbottom = (randint(800,1100), 365)))
+                obstacle_group.add(Obstacle(choice(['banana', 'banana', 'boss'])))
+
+
             if event.type == banana_animation_timer and game_active:
                 banana_index = (banana_index + 1) % len(banana_frames)
                 banana_surf_current = banana_frames[banana_index]
@@ -172,66 +228,33 @@ while True:
     
     #GAME CODE
     if game_active:
+        # Update sprites
+        hero.update()
+        obstacle_group.update()
+
+        #Destroy off-screen obstacles
+        for obs in obstacle_group.sprites():
+            obs.destroy()
+
         screen.blit(sky_surf, (0, 0))
         screen.blit(ground_surf, (0, 0))
-
         score = display_score(game_font, screen, start_time)
-        # pygame.draw.rect(screen, 'White', text_rect, 6)
-        # pygame.draw.rect(screen, 'White', text_rect)
-        # screen.blit(text_surf, text_rect)
-        # pygame.draw.rect(screen, 'White', health_rect)
-        # screen.blit(health_surf, health_rect)
-        display_score(game_font, screen, start_time)
+        hero.draw(screen)
+        obstacle_group.draw(screen)
 
-
-        #TARGET VECTOR IDEA
-        # pygame.draw.line(screen, 'White', hero_rect.center, pygame.mouse.get_pos(),5)
-
-        # pygame.draw.ellipse(screen, 'Brown', pygame.Rect(50,200,100,130))
-
-        #banana movement
-
-        # banana_rect.x -= 12
-        # if banana_rect.right <= 0: banana_rect.left = SCREEN_WIDTH
-        # screen.blit(banana_surf, banana_rect)
-
-        #HERO
-        hero_gravity += 1
-        hero_rect.bottom += hero_gravity
-        if hero_rect.bottom >= 680: hero_rect.bottom = 680
-        hero_animation()
-        screen.blit(hero_surf, hero_rect)
-
-        #Obstacle movenent
-
-        obstacle_rect_list = obstacle_movement(obstacle_rect_list)
-
-        #collision
-        # if banana_rect.colliderect(hero_rect): print('COLLISION')
-        # else: print('Normal')
-        game_active = collisions(hero_rect, obstacle_rect_list)
-
-        # mouse_pos = pygame.mouse.get_pos()
-
-        # if hero_rect.collidepoint(mouse_pos):
-        #     print('It is')
-        # else:
-        #     print('nope')
-
-        #PLAYER INPUT
-
-        # keys = pygame.key.get_pressed()
-        # if keys[pygame.K_SPACE]:
-        #     print('jump')
-
+        if pygame.sprite.spritecollide(hero.sprite, obstacle_group, False):
+            game_active = False
 
     #ENDSCREEN code
     else:
         screen.fill((94,129,162)) # these numbers are a tuple color
         screen.blit(hero_stand, hero_stand_rect)
-        obstacle_rect_list.clear()
-        hero_rect.midbottom = (200, 680)
-        hero_gravity = 0
+
+        obstacle_group.empty()  
+        
+        hero.sprite.rect.midbottom = (200, 680)
+        hero.sprite.gravity = 0
+
 
         score_message = game_font.render(f'Your score: {score}', False, (111,196,169))
         score_message_rect = score_message.get_rect(center = (400,330))
