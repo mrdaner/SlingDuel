@@ -1,6 +1,17 @@
 import pygame
 from sys import exit
 from constants import *
+from random import randint
+
+
+def obstacle_movement(obstacle_list):
+    if obstacle_list:
+        for obstacle_rect in obstacle_list:
+            obstacle_rect.x -= 5
+
+            screen.blit(banana_surf, obstacle_rect)
+        return obstacle_list
+    else: return []
 
 
 def display_score(game_font, screen, start_time):
@@ -54,13 +65,19 @@ def main():
     game_message = game_font.render('Press SPACE to START', False, (111,196,169))
     game_message_rect = game_message.get_rect(center = (400,320))
 
-    #BANANA
+    #BANANA obstacle
     banana_surf = pygame.image.load('graphics/banana.png')
     banana_rect = banana_surf.get_rect(midbottom = (800, 665))
 
+    object_rect_list = []
 
 
+    #Timer
+    obstacle_timer = pygame.USEREVENT + 1
+    pygame.time.set_timer(obstacle_timer, 900)
 
+
+    #EVENT LOOP
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -81,6 +98,8 @@ def main():
                     banana_rect.left = SCREEN_WIDTH
                     start_time = int(pygame.time.get_ticks() / 1000)
 
+            if event.type == obstacle_timer and game_active:
+                object_rect_list.append(banana_surf.get_rect(midbottom = (randint(800,1100), 665)))
 
         #GAME CODE
         if game_active:
@@ -101,24 +120,28 @@ def main():
 
             # pygame.draw.ellipse(screen, 'Brown', pygame.Rect(50,200,100,130))
 
-            #banana
+            #banana movement
 
-            banana_rect.x -= 12
-            if banana_rect.right <= 0: banana_rect.left = SCREEN_WIDTH
-
-            screen.blit(banana_surf, banana_rect)
+            # banana_rect.x -= 12
+            # if banana_rect.right <= 0: banana_rect.left = SCREEN_WIDTH
+            # screen.blit(banana_surf, banana_rect)
 
             #HERO
             hero_gravity += 1
             hero_rect.bottom += hero_gravity
             if hero_rect.bottom >= 680: hero_rect.bottom = 680
-
             screen.blit(hero_surf, hero_rect)
+
+            #Obstacle movenent
+
+            obstacle_rect_list = obstacle_movement(obstacle_rect_list)
 
             #collision
             # if banana_rect.colliderect(hero_rect): print('COLLISION')
             # else: print('Normal')
-            mouse_pos = pygame.mouse.get_pos()
+
+            # mouse_pos = pygame.mouse.get_pos()
+
             # if hero_rect.collidepoint(mouse_pos):
             #     print('It is')
             # else:
