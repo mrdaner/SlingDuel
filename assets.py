@@ -1,7 +1,7 @@
 # assets.py
 from pathlib import Path
 import pygame
-from constants import SCALE  # e.g., SCALE = 1/3
+from constants import SCALE
 
 _ASSET_ROOT = Path(__file__).resolve().parent / "graphics"
 _font_cache = {}
@@ -20,13 +20,11 @@ def get_font(name="ByteBounce.ttf", size=100):
     return _font_cache[key]
 
 def get_background():
-    # Keep backgrounds unscaled so they match your screen fill.
     sky = load_image(_ASSET_ROOT / "Background" / "Sky.png")
     ground = load_image(_ASSET_ROOT / "Background" / "Ground.png")
     return sky, ground
 
 def _scale(surf: pygame.Surface) -> pygame.Surface:
-    # Use rotozoom for nice downscaling; skip work if SCALE==1.
     if SCALE == 1:
         return surf
     return pygame.transform.rotozoom(surf, 0, SCALE)
@@ -36,7 +34,7 @@ def get_hero_frames():
 
     stand = _scale(load_image(hero_dir / "Hero_stand.png"))
     run = [
-        stand,  # already scaled
+        stand,
         _scale(load_image(hero_dir / "Hero_run_1.png")),
         _scale(load_image(hero_dir / "Hero_run_2.png")),
         _scale(load_image(hero_dir / "Hero_run_3.png")),
@@ -53,15 +51,6 @@ def get_hero_frames():
     ]
     return stand, run, jump, throw
 
-def get_obstacle_base(kind: str):
-    if kind == "banana":
-        base = load_image(_ASSET_ROOT / "banana.png")
-    elif kind == "boss":
-        base = load_image(_ASSET_ROOT / "boss.png")
-    else:
-        raise ValueError(f"Unknown obstacle kind: {kind}")
-    return _scale(base)
-
 def get_target():
     surf = pygame.image.load(str(_ASSET_ROOT / "Target.png")).convert_alpha()
     return _scale(surf)
@@ -69,3 +58,40 @@ def get_target():
 def get_heart():
     surf = pygame.image.load(str(_ASSET_ROOT / "Heart.png")).convert_alpha()
     return _scale(surf)
+
+def get_heart_half():
+    surf = pygame.image.load(str(_ASSET_ROOT / "Heart_2.png")).convert_alpha()
+    return _scale(surf)
+
+
+def get_banana_image():
+    return _scale(load_image(_ASSET_ROOT / "Banana.png"))
+
+def get_banana_splashed() -> pygame.Surface:
+    surf = pygame.image.load(str(_ASSET_ROOT / "Banana_squashed.png")).convert_alpha()
+    return _scale(surf)
+
+def get_hook():
+    surf = pygame.image.load(str(_ASSET_ROOT / "Hook.png")).convert_alpha()
+    return _scale(surf)
+
+def get_platform_images():
+    """Return a list of Floor_1..4 surfaces (scaled)."""
+    floor_dir = _ASSET_ROOT / "Floor"
+    imgs = []
+    for i in (1, 2, 3, 4):
+        p = floor_dir / f"Floor_{i}.png"
+        if p.exists():
+            imgs.append(_scale(load_image(p)))
+    return imgs
+
+def get_hook_image() -> pygame.Surface:
+    return _scale(load_image(_ASSET_ROOT / "Hook.png"))
+
+def get_floor_images() -> list[pygame.Surface]:
+    floors = []
+    floor_dir = _ASSET_ROOT / "Floor"
+    for i in (1, 2, 3, 4):
+        p = floor_dir / f"Floor_{i}.png"
+        floors.append(_scale(load_image(p)))
+    return floors

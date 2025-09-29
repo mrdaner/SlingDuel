@@ -7,11 +7,13 @@ FPS = 60
 COLOR_BG = (94, 129, 162)
 COLOR_SCORE = (64, 64, 64)
 
-# pygame.USEREVENT base timers
-OBSTACLE_TIMER_MS = 1100
-OBSTACLE_EVENT = 1  # we’ll offset by pygame.USEREVENT in main
-
-HERO_JUMP_FORCE = -25
+HERO_JUMP_FORCE = -15
 GRAVITY_PER_TICK = 1
 
 SCALE = 1/3
+
+# Projectile physics
+PROJECTILE_GRAVITY = 0.5      # pixels per frame^2 (tweak to taste)
+MAX_PROJECTILE_FALL_SPEED = 18
+
+MAX_HEALTH = 5

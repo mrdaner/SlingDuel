@@ -1,5 +1,6 @@
 from .hero import Hero
-from .obstacle import Obstacle
+from .banana import Banana
+from .sling import Sling
+from .throwable import Throwable
 
-
-__all__ = ["Hero", "Obstacle"]
+__all__ = ["Hero", "Banana", "Sling", "Throwable"]
