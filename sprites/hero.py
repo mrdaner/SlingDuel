@@ -56,7 +56,7 @@ class Hero(pygame.sprite.Sprite):
         self._throw_velocity = pygame.Vector2()
 
         # hook (grapple)
-        self.hook_cooldown_ms = 1500  # 3x faster than 5s
+        self.hook_cooldown_ms = 2000  # 2s cooldown between uses
         self.hook_ready_time = 0
         self.hook_active = False
         self.hook_sprite: Sling | None = None
@@ -91,11 +91,9 @@ class Hero(pygame.sprite.Sprite):
             self.aim_angle = max(self.aim_min, self.aim_angle - self.aim_step)
 
         # Banana throw (only if carrying one)
-        if keys[self.controls["throw"]] and not self.is_throwing and self.has_banana:
-            self.is_throwing = True
-            self.hero_throw_index = 0.0
-            tx, ty = self.get_aim_pos()
-            dir_vec = pygame.Vector2(tx - self.rect.centerx, ty - self.rect.centery).normalize()
+        if keys[self.controls["throw"]] and self.has_banana and not self._pending_throw:
+            dir_vec = self._aim_direction()
+            self._start_throw_animation()
             self._throw_velocity = dir_vec * 12
             self._pending_throw = True
             self.has_banana = False  # consume now
@@ -109,12 +107,13 @@ class Hero(pygame.sprite.Sprite):
             # press edge → spawn if ready
             if hook_pressed and not self._hook_prev:
                 if (not self.hook_active) and (now >= self.hook_ready_time):
-                    tx, ty = self.get_aim_pos()
-                    dir_vec = pygame.Vector2(tx - self.rect.centerx, ty - self.rect.centery).normalize()
+                    dir_vec = self._aim_direction()
                     velocity = dir_vec * (14 * 1.3)  # 30% longer throw
                     self.hook_sprite = Sling(self.rect.center, velocity, owner=self)
                     hooks_group.add(self.hook_sprite)
+                    self._start_throw_animation()
                     self.hook_active = True
+                    self.hook_ready_time = now + self.hook_cooldown_ms
 
             # release edge → (do nothing immediately; Sling enforces min 2s)
             if (not hook_pressed) and self._hook_prev:
@@ -159,24 +158,23 @@ class Hero(pygame.sprite.Sprite):
             self.rect.right = SCREEN_WIDTH
 
     def animate(self):
-        # Standing if on ground or platform
-        if self.rect.bottom == GROUND_Y or self.on_platform:
-            if self.speed != 0:
-                self.hero_run_index = (self.hero_run_index + 0.4) % len(self.hero_run)
-                frame = self.hero_run[int(self.hero_run_index)]
+        frame = self.hero_stand
+
+        if self.is_throwing:
+            self.hero_throw_index += 0.2
+            if self.hero_throw_index >= len(self.hero_throw):
+                self.hero_throw_index = 0.0
+                self.is_throwing = False
             else:
-                frame = self.hero_stand
-        else:
-            # in air
-            if self.is_throwing:
-                # still show throw frames while mid-air if throwing
-                self.hero_throw_index += 0.2
-                if self.hero_throw_index >= len(self.hero_throw):
-                    self.hero_throw_index = 0.0
-                    self.is_throwing = False
-                    frame = self.hero_stand
+                frame = self.hero_throw[int(self.hero_throw_index)]
+
+        if not self.is_throwing:
+            if self.rect.bottom == GROUND_Y or self.on_platform:
+                if self.speed != 0:
+                    self.hero_run_index = (self.hero_run_index + 0.4) % len(self.hero_run)
+                    frame = self.hero_run[int(self.hero_run_index)]
                 else:
-                    frame = self.hero_throw[int(self.hero_throw_index)]
+                    frame = self.hero_stand
             else:
                 self.hero_jump_index = (self.hero_jump_index + 0.1) % len(self.hero_jump)
                 frame = self.hero_jump[int(self.hero_jump_index)]
@@ -191,6 +189,26 @@ class Hero(pygame.sprite.Sprite):
         dx = self.aim_radius * (cos_a if self.facing_right else -cos_a)
         dy = self.aim_radius * (-sin_a)
         return int(cx + dx), int(cy + dy)
+
+    def _aim_direction(self) -> pygame.Vector2:
+        tx, ty = self.get_aim_pos()
+        vec = pygame.Vector2(tx - self.rect.centerx, ty - self.rect.centery)
+        if vec.length_squared() == 0:
+            vec = pygame.Vector2(1 if self.facing_right else -1, 0)
+        else:
+            vec = vec.normalize()
+        return vec
+
+    def _start_throw_animation(self):
+        self.is_throwing = True
+        self.hero_throw_index = 0.0
+
+    def _finish_hook(self):
+        """Mark the hook as finished and clear state."""
+        if self.hook_sprite is not None:
+            self.hook_sprite = None
+        if self.hook_active:
+            self.hook_active = False
 
     def reset(self):
         self.rect.bottom = GROUND_Y
@@ -234,3 +252,7 @@ class Hero(pygame.sprite.Sprite):
             banana_img = get_banana_image()
             projectiles.add(Banana(self.rect.center, self._throw_velocity, banana_img, owner=self))
             self._pending_throw = False
+
+        if self.hook_active:
+            if self.hook_sprite is None or not self.hook_sprite.alive():
+                self._finish_hook()

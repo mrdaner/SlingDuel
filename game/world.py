@@ -63,6 +63,7 @@ class GameWorld:
         self.throwables.empty()
         self.hooks.empty()
         self.spawner.spawn_platforms()
+        self.spawner.spawn_banana_if_needed()
 
     def update(self) -> None:
         self.player_group.update(self.throwables, self.hooks, self.platforms)

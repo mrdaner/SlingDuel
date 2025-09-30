@@ -51,13 +51,23 @@ class PickupSpawner:
             self._platforms.add(platform)
 
     def spawn_banana_if_needed(self) -> None:
+        """Spawn at most one banana following the ground/platform rules."""
         if len(self._banana_pickups) >= 4:
             return
 
-        self._spawn_banana_on_ground()
-        while len(self._banana_pickups) < 4:
-            if not self._spawn_banana_on_platform():
-                break
+        # When a new round starts we want the first banana to appear on a
+        # platform so players have to move for it instead of immediately
+        # grabbing one on the ground.
+        if not self._banana_pickups:
+            if self._spawn_banana_on_platform():
+                return
+
+        # Maintain at most a single ground banana.
+        if self._spawn_banana_on_ground():
+            return
+
+        # Otherwise try to add one more to the platforms.
+        self._spawn_banana_on_platform()
 
     def spawn_heart_if_needed(self) -> None:
         if len(self._health_pickups) >= 1 or not self._platforms:
