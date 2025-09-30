@@ -16,8 +16,11 @@ class Sling(pygame.sprite.Sprite):
     """
     MIN_STICK_MS = 2000      # minimum attach time even if key released
     DETACH_SAFETY_MS = 7000  # hard safety
-    pull_speed = 12          # strong pull
-    break_dist = 18          # “arrived” distance
+    pull_speed = 14          # straight-line pull strength while reeling
+    reel_distance = 1.6      # rope shortens by this many px per tick when pulling
+    swing_gravity = 0.45     # pseudo gravity used for swing mode
+    max_release_speed = 22   # clamp magnitude of release impulse
+    snap_height_factor = 0.55  # fraction of hero height before snapping onto surface
 
     ATTACH_GRACE_MS = 90
     MIN_TRAVEL_BEFORE_ATTACH = 30
@@ -45,6 +48,8 @@ class Sling(pygame.sprite.Sprite):
         self.omega = 0.0            # angular velocity
         self.pull_mode = False      # set by hero when jump is held
         self.release_requested = False
+        self.owner_velocity = pygame.Vector2(0, 0)
+        self.min_rope_len = 24.0
 
     # ---- external controls from Hero ----
     def set_pull(self, on: bool):
@@ -73,15 +78,21 @@ class Sling(pygame.sprite.Sprite):
             an = pygame.Vector2(self.anchor)
             v = oc - an
             self.rope_len = max(40.0, v.length())
+            self.min_rope_len = max(12.0, self.owner.rect.height * self.snap_height_factor)
             # angle measured from vertical down; y+ is down in pygame
-            # theta = atan2(horizontal, vertical down component)
             self.theta = math.atan2(v.x, v.y if v.y != 0 else 1)
             self.omega = 0.0
 
             # launch impulse (past clinging point)
-            launch = v.normalize() * -20  # push toward/through anchor
-            self.owner.rect.centerx += int(launch.x)
-            self.owner.rect.centery += int(launch.y)
+            if v.length_squared() > 0:
+                launch = v.normalize() * -20  # push toward/through anchor
+                self.owner.rect.centerx += int(launch.x)
+                self.owner.rect.centery += int(launch.y)
+
+            self.owner_velocity.update(0, 0)
+            self.owner.gravity = 0
+            self.owner.speed = 0
+            self.owner.on_platform = False
 
     def _can_detach(self) -> bool:
         if self.attached_at_ms is None:
@@ -133,6 +144,7 @@ class Sling(pygame.sprite.Sprite):
         elif self.state == "attached":
             # safety auto-detach
             if self.attached_at_ms and now - self.attached_at_ms >= self.DETACH_SAFETY_MS:
+                self._apply_release_impulse()
                 self._detach()
                 return
 
@@ -140,40 +152,107 @@ class Sling(pygame.sprite.Sprite):
                 oc = pygame.Vector2(self.owner.rect.center)
                 an = pygame.Vector2(self.anchor)
                 v = oc - an
-                if v.length() == 0:
+                if v.length_squared() == 0:
                     v = pygame.Vector2(0.001, 0.001)
 
                 # Convert to polar around anchor: theta, omega
                 self.theta = math.atan2(v.x, v.y if v.y != 0 else 1)
 
+                prev_center = pygame.Vector2(self.owner.rect.center)
+
+                snapped = False
+                target_center = None
+
                 if self.pull_mode:
-                    # Pull straight towards anchor
-                    to_anchor = (an - oc)
+                    # shorten rope slightly each frame while reeling in
+                    self.rope_len = max(self.min_rope_len, self.rope_len - self.reel_distance)
+
+                    to_anchor = an - oc
                     dist = to_anchor.length()
-                    if dist <= self.break_dist:
-                        if self._can_detach() and self.release_requested:
-                            self._detach()
-                        return
-                    # Move owner strongly towards anchor
-                    to_anchor.scale_to_length(min(self.pull_speed, dist))
-                    self.owner.rect.centerx += int(to_anchor.x)
-                    self.owner.rect.centery += int(to_anchor.y)
+                    if dist > 0:
+                        snap_threshold = self.owner.rect.height * self.snap_height_factor
+                        if dist <= snap_threshold and an.y >= 0:
+                            target_center = self._snap_owner_to_surface(an)
+                            snapped = True
+                        else:
+                            step = min(self.pull_speed, dist)
+                            to_anchor.scale_to_length(step)
+                            new_pos = oc + to_anchor
+                            offset = new_pos - an
+                            if offset.length() > self.rope_len:
+                                offset.scale_to_length(self.rope_len)
+                                new_pos = an + offset
+                            target_center = new_pos
+                    else:
+                        target_center = self._snap_owner_to_surface(an)
+                        snapped = True
+
+                    if not snapped:
+                        self.owner.on_platform = False
                 else:
                     # Pendulum swing: simple angular equation with pseudo-gravity
-                    g = 0.35
+                    g = self.swing_gravity
                     self.omega += (g / self.rope_len) * math.sin(self.theta)
                     self.omega *= 0.99  # small damping
                     self.theta -= self.omega
 
                     # project back on circle
                     new_rel = pygame.Vector2(math.sin(self.theta), math.cos(self.theta)) * self.rope_len
-                    new_pos = an + new_rel
-                    self.owner.rect.centerx = int(new_pos.x)
-                    self.owner.rect.centery = int(new_pos.y)
+                    target_center = an + new_rel
+                    self.owner.on_platform = False
+
+                if target_center is not None and not snapped:
+                    self.owner.rect.centerx = int(target_center.x)
+                    self.owner.rect.centery = int(target_center.y)
+
+                new_center = pygame.Vector2(self.owner.rect.center)
+                if snapped:
+                    self.owner_velocity.update(0, 0)
+                else:
+                    if target_center is not None:
+                        self.owner_velocity = target_center - prev_center
+                    else:
+                        self.owner_velocity = new_center - prev_center
+                self.owner.gravity = 0
+                self.owner.speed = 0
 
                 # Detach when allowed and requested (jump released)
                 if self.release_requested and self._can_detach():
+                    self._apply_release_impulse()
                     self._detach()
 
         elif self.state == "done":
             self.kill()
+
+    # ---- internal helpers ----
+    def _snap_owner_to_surface(self, anchor_vec: pygame.Vector2) -> pygame.Vector2 | None:
+        if not self.owner:
+            return None
+
+        hero = self.owner
+        if anchor_vec.y <= 0:
+            # ceiling hook: keep player slightly below the attachment point
+            target_center_y = anchor_vec.y + hero.rect.height * 0.5
+            hero.rect.centerx = int(anchor_vec.x)
+            hero.rect.centery = int(target_center_y)
+            hero.on_platform = False
+        else:
+            # standable surface (ground/platform)
+            hero.rect.centerx = int(anchor_vec.x)
+            hero.rect.bottom = int(anchor_vec.y)
+            hero.on_platform = True
+        new_center = pygame.Vector2(hero.rect.center)
+        self.rope_len = max(self.min_rope_len, (new_center - anchor_vec).length())
+        self.owner_velocity.update(0, 0)
+        return new_center
+
+    def _apply_release_impulse(self) -> None:
+        if not self.owner:
+            return
+        velocity = pygame.Vector2(self.owner_velocity)
+        if velocity.length_squared() == 0:
+            return
+        if velocity.length() > self.max_release_speed:
+            velocity.scale_to_length(self.max_release_speed)
+        self.owner.apply_hook_impulse(velocity)
+        self.owner_velocity.update(0, 0)

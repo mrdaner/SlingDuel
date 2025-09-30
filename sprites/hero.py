@@ -56,11 +56,15 @@ class Hero(pygame.sprite.Sprite):
         self._throw_velocity = pygame.Vector2()
 
         # hook (grapple)
-        self.hook_cooldown_ms = 2000  # 2s cooldown between uses
+        self.hook_cooldown_ms = 500  # reduced cooldown between uses
         self.hook_ready_time = 0
         self.hook_active = False
         self.hook_sprite: Sling | None = None
         self._hook_prev = False  # previous-frame pressed state
+
+        # momentum imparted when releasing a hook swing
+        self._hook_momentum_x = 0.0
+        self._hook_momentum_remainder = 0.0
 
         # grounded state
         self.on_platform = False
@@ -83,6 +87,10 @@ class Hero(pygame.sprite.Sprite):
             self.facing_right = True
         else:
             self.speed = 0
+
+        if self.speed != 0:
+            self._hook_momentum_x = 0.0
+            self._hook_momentum_remainder = 0.0
 
         # Aim around circle
         if keys[self.controls["up"]]:
@@ -138,6 +146,8 @@ class Hero(pygame.sprite.Sprite):
         if self.rect.bottom >= GROUND_Y:
             self.rect.bottom = GROUND_Y
             self.gravity = 0
+            self._hook_momentum_x *= 0.6
+            self._hook_momentum_remainder *= 0.6
 
         # Platform collision (falling from above only; bottom half is standable)
         if platforms and self.gravity >= 0:
@@ -149,13 +159,29 @@ class Hero(pygame.sprite.Sprite):
                     self.rect.bottom = top
                     self.gravity = 0
                     self.on_platform = True
+                    self._hook_momentum_x *= 0.6
+                    self._hook_momentum_remainder *= 0.6
 
     def move_horizontal(self):
-        self.rect.x += self.speed
+        total = self.speed + self._hook_momentum_x + self._hook_momentum_remainder
+        dx = int(total)
+        self._hook_momentum_remainder = total - dx
+        self.rect.x += dx
+
+        # apply damping so momentum dissipates over time
+        self._hook_momentum_x *= 0.9
+        if abs(self._hook_momentum_x) < 0.05:
+            self._hook_momentum_x = 0.0
+            self._hook_momentum_remainder = 0.0
+
         if self.rect.left < 0:
             self.rect.left = 0
+            self._hook_momentum_x = 0.0
+            self._hook_momentum_remainder = 0.0
         if self.rect.right > SCREEN_WIDTH:
             self.rect.right = SCREEN_WIDTH
+            self._hook_momentum_x = 0.0
+            self._hook_momentum_remainder = 0.0
 
     def animate(self):
         frame = self.hero_stand
@@ -210,6 +236,18 @@ class Hero(pygame.sprite.Sprite):
         if self.hook_active:
             self.hook_active = False
 
+    def apply_hook_impulse(self, velocity: pygame.Vector2) -> None:
+        """Receive velocity from a released hook swing."""
+        max_speed = 18.0
+        impulse = pygame.Vector2(velocity)
+        if impulse.length() > max_speed:
+            impulse.scale_to_length(max_speed)
+
+        self._hook_momentum_x = impulse.x
+        self._hook_momentum_remainder = 0.0
+        self.gravity = impulse.y
+        self.on_platform = False
+
     def reset(self):
         self.rect.bottom = GROUND_Y
         self.gravity = 0
@@ -230,6 +268,8 @@ class Hero(pygame.sprite.Sprite):
         self.hook_active = False
         self.hook_sprite = None
         self._hook_prev = False
+        self._hook_momentum_x = 0.0
+        self._hook_momentum_remainder = 0.0
 
     def take_damage(self, amount: float = 1.0):
         self.health = max(0.0, self.health - amount)
