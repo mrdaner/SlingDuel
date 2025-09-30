@@ -4,8 +4,8 @@ import os
 import pygame
 
 _DEFAULTS = {
-    "player1": {"left":"a","right":"d","up":"w","down":"s","throw":"f","sling":"r","jump":"c"},
-    "player2": {"left":"j","right":"l","up":"i","down":"k","throw":"h","sling":"u","jump":"n"},
+    "player1": {"left":"a","right":"d","up":"w","down":"s","throw":"f","sling":"left shift","jump":"space"},
+    "player2": {"left":"j","right":"l","up":"i","down":"k","throw":"h","sling":"return","jump":"right shift"},
 }
 _KEYFILE = "keys.json"
 
@@ -22,6 +22,13 @@ def _normalize_controls(raw: dict) -> dict:
     for action, keyname in raw.items():
         out[action] = _to_keycode(str(keyname))
     return out
+
+
+def _to_name(keycode: int) -> str:
+    try:
+        return pygame.key.name(int(keycode))
+    except Exception:
+        return "unknown"
 
 def load_controls() -> tuple[dict, dict]:
     """Return (p1_controls, p2_controls) mapping actions → pygame keycodes.
@@ -49,3 +56,19 @@ def load_controls() -> tuple[dict, dict]:
         p2 = _normalize_controls(_DEFAULTS["player2"])
 
     return p1, p2
+
+
+def save_controls(player1: dict, player2: dict) -> None:
+    data = {
+        "player1": {action: _to_name(code) for action, code in player1.items()},
+        "player2": {action: _to_name(code) for action, code in player2.items()},
+    }
+    try:
+        with open(_KEYFILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
+def default_controls() -> tuple[dict, dict]:
+    return _normalize_controls(_DEFAULTS["player1"]), _normalize_controls(_DEFAULTS["player2"])

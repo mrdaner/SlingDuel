@@ -161,4 +161,11 @@ class Banana(Throwable):
         if hasattr(player, "take_damage"):
             player.take_damage(self.damage_step)
         self.state = "splatted_temp"
-        self.despawn_at_ms = pygame.time.get_ticks() + 3000  # 3s
+        self._rotate_splat_image(90)
+        self.despawn_at_ms = pygame.time.get_ticks() + 750  # 0.75s
+
+    def _rotate_splat_image(self, degrees: float) -> None:
+        center = self.rect.center
+        rotated = pygame.transform.rotate(self.image, degrees)
+        self.image = rotated
+        self.rect = self.image.get_rect(center=center)

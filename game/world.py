@@ -29,7 +29,7 @@ class Players:
 class GameWorld:
     """Owns sprite groups, player references, and round lifecycle helpers."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, test_mode: bool = False) -> None:
         self.players = Players(*self._create_players())
         self.player_group = pygame.sprite.Group(*self.players.as_tuple())
         self.throwables = pygame.sprite.Group()
@@ -38,11 +38,16 @@ class GameWorld:
         self.health_pickups = pygame.sprite.Group()
         self.platforms = pygame.sprite.Group()
 
+        self.test_mode = bool(test_mode)
+
         self.spawner = PickupSpawner(
             platforms=self.platforms,
             banana_pickups=self.banana_pickups,
             health_pickups=self.health_pickups,
+            players=self.players,
         )
+
+        self._apply_test_mode_to_players()
 
     @property
     def player1(self) -> Hero:
@@ -56,6 +61,7 @@ class GameWorld:
     # Lifecycle helpers
     # ------------------------------------------------------------------
     def begin_round(self) -> None:
+        self._apply_test_mode_to_players()
         for player in self.players:
             player.reset()
         self.banana_pickups.empty()
@@ -84,6 +90,12 @@ class GameWorld:
         p1_controls, p2_controls = load_controls()
         self.players.first.controls = p1_controls
         self.players.second.controls = p2_controls
+
+    def set_test_mode(self, enabled: bool) -> None:
+        if self.test_mode == bool(enabled):
+            return
+        self.test_mode = bool(enabled)
+        self._apply_test_mode_to_players()
 
     @property
     def round_over(self) -> bool:
@@ -121,9 +133,12 @@ class GameWorld:
 
     def _handle_projectile_hits(self) -> None:
         for projectile in self.throwables.sprites():
-            hit = pygame.sprite.spritecollideany(projectile, self.player_group)
-            if hit and getattr(projectile, "can_hit", lambda *_: True)(hit):
-                projectile.on_hit(hit)
+            for player in self.players:
+                if not getattr(projectile, "can_hit", lambda *_: True)(player):
+                    continue
+                if projectile.rect.colliderect(player.banana_hitbox()):
+                    projectile.on_hit(player)
+                    break
 
     def _handle_splats(self) -> None:
         splats = [
@@ -135,7 +150,7 @@ class GameWorld:
         for splat in splats:
             hitbox = splat.rect.inflate(10, 6)
             for player in self.players:
-                if hitbox.colliderect(player.rect):
+                if hitbox.colliderect(player.banana_hitbox()):
                     splat.stepped_on_by(player)
 
         ground_splats = [s for s in splats if s.rect.bottom == GROUND_Y]
@@ -157,6 +172,14 @@ class GameWorld:
             name_color=(80, 140, 255),
         )
         return player1, player2
+
+    def _apply_test_mode_to_players(self) -> None:
+        for hero in (self.players.first, self.players.second):
+            hero.infinite_bananas = self.test_mode
+            hero._banana_refill_time = 0
+            if self.test_mode and not hero.has_banana:
+                hero.has_banana = True
+
 
 
 __all__ = ["GameWorld"]

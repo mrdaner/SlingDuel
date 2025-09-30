@@ -1,4 +1,20 @@
 {
-  "player1": { "left":"a", "right":"d", "up":"w", "down":"s", "throw":"f", "sling":"r", "jump":"c" },
-  "player2": { "left":"j", "right":"l", "up":"i", "down":"k", "throw":"h", "sling":"u", "jump":"n" }
+  "player1": {
+    "left": "a",
+    "right": "d",
+    "up": "w",
+    "down": "s",
+    "throw": "b",
+    "sling": "h",
+    "jump": "space"
+  },
+  "player2": {
+    "left": "k",
+    "right": ";",
+    "up": "o",
+    "down": "l",
+    "throw": "right shift",
+    "sling": "return",
+    "jump": "right alt"
+  }
 }

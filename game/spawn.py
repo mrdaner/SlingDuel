@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from random import choice, randint
-from typing import Iterable
+from typing import Iterable, TYPE_CHECKING
 
 import pygame
 
@@ -12,15 +12,22 @@ from sprites.health import HealthPickup
 from sprites.platform import Platform
 from assets import get_floor_images
 
+if TYPE_CHECKING:
+    from sprites.hero import Hero
+
 
 class PickupSpawner:
     """Responsible for placing platforms and pickups without overlap."""
 
     def __init__(self, *, platforms: pygame.sprite.Group, banana_pickups: pygame.sprite.Group,
-                 health_pickups: pygame.sprite.Group) -> None:
+                 health_pickups: pygame.sprite.Group, players: Iterable["Hero"]) -> None:
         self._platforms = platforms
         self._banana_pickups = banana_pickups
         self._health_pickups = health_pickups
+        self._players = list(players)
+
+        self._platform_spawns_since_ground = 0
+        self._ground_ready = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -28,6 +35,8 @@ class PickupSpawner:
     def spawn_platforms(self) -> None:
         """Create a fresh set of floating platforms for a new round."""
         self._platforms.empty()
+        self._platform_spawns_since_ground = 0
+        self._ground_ready = False
         floor_imgs = get_floor_images()
         if not floor_imgs:
             return
@@ -52,29 +61,34 @@ class PickupSpawner:
 
     def spawn_banana_if_needed(self) -> None:
         """Spawn at most one banana following the ground/platform rules."""
-        if len(self._banana_pickups) >= 4:
+        if len(self._banana_pickups) >= 3:
             return
 
-        # When a new round starts we want the first banana to appear on a
-        # platform so players have to move for it instead of immediately
-        # grabbing one on the ground.
+        # When no bananas are active, prefer platforms unless we've earned a ground spawn.
         if not self._banana_pickups:
+            if self._ground_ready and self._try_spawn_ground():
+                return
             if self._spawn_banana_on_platform():
                 return
 
-        # Maintain at most a single ground banana.
-        if self._spawn_banana_on_ground():
-            return
+        # If a ground spawn is ready and none exists yet, try it now.
+        if self._ground_ready and not self._has_ground_banana():
+            if self._try_spawn_ground():
+                return
 
-        # Otherwise try to add one more to the platforms.
+        # Otherwise attempt to populate another platform slot.
         self._spawn_banana_on_platform()
 
     def spawn_heart_if_needed(self) -> None:
         if len(self._health_pickups) >= 1 or not self._platforms:
             return
+        if not self._players_need_health():
+            return
 
         for _ in range(20):
             platform = choice(self._platforms.sprites())
+            if self._platform_has_pickup(platform):
+                continue
             x_pos = self._random_x_on_platform(platform)
             candidate = HealthPickup(x_pos, y_bottom=platform.stand_rect.top)
             if self._non_overlapping(candidate.rect, (self._banana_pickups, self._health_pickups)):
@@ -93,6 +107,8 @@ class PickupSpawner:
         candidate = BananaPickup(x_pos, y_bottom=GROUND_Y)
         if self._non_overlapping(candidate.rect, (self._banana_pickups, self._health_pickups)):
             self._banana_pickups.add(candidate)
+            self._ground_ready = False
+            self._platform_spawns_since_ground = 0
             return True
         return False
 
@@ -103,11 +119,45 @@ class PickupSpawner:
 
         for _ in range(12):
             platform = choice(platforms)
+            if self._platform_has_pickup(platform):
+                continue
             x_pos = self._random_x_on_platform(platform)
             candidate = BananaPickup(x_pos, y_bottom=platform.stand_rect.top)
             if self._non_overlapping(candidate.rect, (self._banana_pickups, self._health_pickups)):
                 self._banana_pickups.add(candidate)
+                self._platform_spawns_since_ground += 1
+                if self._platform_spawns_since_ground >= 4:
+                    self._ground_ready = True
+                    self._platform_spawns_since_ground = 0
                 return True
+        return False
+
+    def _try_spawn_ground(self) -> bool:
+        if self._spawn_banana_on_ground():
+            return True
+        return False
+
+    def _has_ground_banana(self) -> bool:
+        return any(banana.rect.bottom == GROUND_Y for banana in self._banana_pickups)
+
+    def _players_need_health(self) -> bool:
+        for player in self._players:
+            if getattr(player, "health", None) is not None and player.health <= 3:
+                return True
+        return False
+
+    def _platform_has_pickup(self, platform: Platform) -> bool:
+        top_y = platform.stand_rect.top
+        left = platform.rect.left
+        right = platform.rect.right
+
+        for group in (self._banana_pickups, self._health_pickups):
+            for sprite in group.sprites():
+                if sprite.rect.bottom != top_y:
+                    continue
+                cx = sprite.rect.centerx
+                if left <= cx <= right:
+                    return True
         return False
 
     @staticmethod

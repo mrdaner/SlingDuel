@@ -14,13 +14,15 @@ class Sling(pygame.sprite.Sprite):
            * Else -> swing (pendulum-like)
        - Releases on owner's jump key release (if min time passed) or auto when done.
     """
-    MIN_STICK_MS = 2000      # minimum attach time even if key released
+    MIN_STICK_MS = 0         # allow immediate detach when hook button released
     DETACH_SAFETY_MS = 7000  # hard safety
     pull_speed = 14          # straight-line pull strength while reeling
     reel_distance = 1.6      # rope shortens by this many px per tick when pulling
     swing_gravity = 0.45     # pseudo gravity used for swing mode
-    max_release_speed = 22   # clamp magnitude of release impulse
+    max_release_speed = 34   # clamp magnitude of release impulse
     snap_height_factor = 0.55  # fraction of hero height before snapping onto surface
+    swing_release_boost = 2.3  # multiplier applied to swing release velocity
+    pull_release_boost = 1.4   # multiplier applied when detaching during pull
 
     ATTACH_GRACE_MS = 90
     MIN_TRAVEL_BEFORE_ATTACH = 30
@@ -28,12 +30,23 @@ class Sling(pygame.sprite.Sprite):
     def __init__(self, pos, velocity, owner=None):
         super().__init__()
         self.owner = owner
-        self.image = get_hook_image()
-        self.rect = self.image.get_rect(center=pos)
+        base_image = get_hook_image()
+        base_rect = base_image.get_rect()
+        anchor_local = pygame.Vector2(base_rect.left, base_rect.bottom) - pygame.Vector2(base_rect.center)
+
         self.velocity = pygame.Vector2(velocity)
+        should_flip = self.velocity.x < 0
+        if self.velocity.x == 0 and owner is not None and not owner.facing_right:
+            should_flip = True
+        if should_flip:
+            base_image = pygame.transform.flip(base_image, True, False)
+            anchor_local.x *= -1
+
+        self.image = base_image
+        self.rect = self.image.get_rect(center=pos)
 
         r = self.image.get_rect()
-        self.rope_anchor_local = pygame.Vector2(r.left, r.bottom) - pygame.Vector2(r.center)
+        self.rope_anchor_local = anchor_local
 
         self.state = "flying"     # flying → attached → done
         self.anchor = None
@@ -49,7 +62,8 @@ class Sling(pygame.sprite.Sprite):
         self.pull_mode = False      # set by hero when jump is held
         self.release_requested = False
         self.owner_velocity = pygame.Vector2(0, 0)
-        self.min_rope_len = 24.0
+        self.min_rope_len = 16.0
+        self.motion_mode = "swing"
 
     # ---- external controls from Hero ----
     def set_pull(self, on: bool):
@@ -78,7 +92,6 @@ class Sling(pygame.sprite.Sprite):
             an = pygame.Vector2(self.anchor)
             v = oc - an
             self.rope_len = max(40.0, v.length())
-            self.min_rope_len = max(12.0, self.owner.rect.height * self.snap_height_factor)
             # angle measured from vertical down; y+ is down in pygame
             self.theta = math.atan2(v.x, v.y if v.y != 0 else 1)
             self.omega = 0.0
@@ -93,6 +106,7 @@ class Sling(pygame.sprite.Sprite):
             self.owner.gravity = 0
             self.owner.speed = 0
             self.owner.on_platform = False
+            self.motion_mode = "swing"
 
     def _can_detach(self) -> bool:
         if self.attached_at_ms is None:
@@ -165,7 +179,11 @@ class Sling(pygame.sprite.Sprite):
 
                 if self.pull_mode:
                     # shorten rope slightly each frame while reeling in
-                    self.rope_len = max(self.min_rope_len, self.rope_len - self.reel_distance)
+                    desired_len = self.rope_len - self.reel_distance
+                    if self.rope_len > self.min_rope_len and desired_len < self.min_rope_len:
+                        self.rope_len = self.min_rope_len
+                    else:
+                        self.rope_len = max(1.0, desired_len)
 
                     to_anchor = an - oc
                     dist = to_anchor.length()
@@ -189,30 +207,40 @@ class Sling(pygame.sprite.Sprite):
 
                     if not snapped:
                         self.owner.on_platform = False
+                        self.motion_mode = "pull"
+                    else:
+                        self.motion_mode = "snapped"
+                        self._auto_detach_on_snap()
                 else:
                     # Pendulum swing: simple angular equation with pseudo-gravity
                     g = self.swing_gravity
                     self.omega += (g / self.rope_len) * math.sin(self.theta)
-                    self.omega *= 0.99  # small damping
+                    self.omega *= 0.985  # slightly less damping to keep momentum
                     self.theta -= self.omega
 
                     # project back on circle
                     new_rel = pygame.Vector2(math.sin(self.theta), math.cos(self.theta)) * self.rope_len
                     target_center = an + new_rel
                     self.owner.on_platform = False
+                    self.motion_mode = "swing"
 
+                center_vec = None
                 if target_center is not None and not snapped:
+                    center_vec = pygame.Vector2(target_center)
                     self.owner.rect.centerx = int(target_center.x)
                     self.owner.rect.centery = int(target_center.y)
 
                 new_center = pygame.Vector2(self.owner.rect.center)
+                if not snapped:
+                    if center_vec is None:
+                        center_vec = pygame.Vector2(new_center)
+                    self.rope_len = max(1.0, (center_vec - an).length())
                 if snapped:
                     self.owner_velocity.update(0, 0)
                 else:
-                    if target_center is not None:
-                        self.owner_velocity = target_center - prev_center
-                    else:
-                        self.owner_velocity = new_center - prev_center
+                    if center_vec is None:
+                        center_vec = pygame.Vector2(new_center)
+                    self.owner_velocity = center_vec - prev_center
                 self.owner.gravity = 0
                 self.owner.speed = 0
 
@@ -241,8 +269,9 @@ class Sling(pygame.sprite.Sprite):
             hero.rect.centerx = int(anchor_vec.x)
             hero.rect.bottom = int(anchor_vec.y)
             hero.on_platform = True
+        self.motion_mode = "snapped"
         new_center = pygame.Vector2(hero.rect.center)
-        self.rope_len = max(self.min_rope_len, (new_center - anchor_vec).length())
+        self.rope_len = max(1.0, (new_center - anchor_vec).length())
         self.owner_velocity.update(0, 0)
         return new_center
 
@@ -250,9 +279,36 @@ class Sling(pygame.sprite.Sprite):
         if not self.owner:
             return
         velocity = pygame.Vector2(self.owner_velocity)
+        boost = self.pull_release_boost
+
+        if self.motion_mode == "swing":
+            boost = self.swing_release_boost
+            tangent = self._tangential_velocity()
+            if tangent.length() > velocity.length():
+                velocity = tangent
+            elif tangent.length_squared() > 0:
+                velocity += tangent * 0.5
+
         if velocity.length_squared() == 0:
             return
+
+        velocity *= boost
         if velocity.length() > self.max_release_speed:
             velocity.scale_to_length(self.max_release_speed)
         self.owner.apply_hook_impulse(velocity)
         self.owner_velocity.update(0, 0)
+
+    def _tangential_velocity(self) -> pygame.Vector2:
+        if self.rope_len is None or self.rope_len == 0:
+            return pygame.Vector2()
+        speed = self.omega * self.rope_len
+        tangent = pygame.Vector2(math.cos(self.theta), -math.sin(self.theta))
+        return tangent * speed
+
+    def _auto_detach_on_snap(self) -> None:
+        if self.state != "attached":
+            return
+        if not self._can_detach():
+            return
+        self._apply_release_impulse()
+        self._detach()

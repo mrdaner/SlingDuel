@@ -25,6 +25,7 @@ class GameResources:
     sky: pygame.Surface
     ground: pygame.Surface
     target: pygame.Surface
+    target_left: pygame.Surface
     heart: pygame.Surface
     heart_half: pygame.Surface
     banana_icon: pygame.Surface
@@ -35,12 +36,14 @@ class GameResources:
     @classmethod
     def load(cls) -> "GameResources":
         sky, ground = get_background()
+        target = get_target()
         return cls(
             game_font=get_font(size=100),
             name_font=get_font(size=36),
             sky=sky,
             ground=ground,
-            target=get_target(),
+            target=target,
+            target_left=pygame.transform.flip(target, True, False),
             heart=get_heart(),
             heart_half=get_heart_half(),
             banana_icon=get_banana_image(),

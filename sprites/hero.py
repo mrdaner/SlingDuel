@@ -22,8 +22,8 @@ class Hero(pygame.sprite.Sprite):
             "up":    pygame.K_w,
             "down":  pygame.K_s,
             "throw": pygame.K_f,
-            "sling": pygame.K_r,
-            "jump":  pygame.K_c
+            "sling": pygame.K_LSHIFT,
+            "jump":  pygame.K_SPACE
         }
         self.controls = (controls or default_controls)
 
@@ -50,10 +50,12 @@ class Hero(pygame.sprite.Sprite):
 
         # inventory
         self.has_banana = False
+        self.infinite_bananas = False
 
         # throws
         self._pending_throw = False
         self._throw_velocity = pygame.Vector2()
+        self._banana_refill_time = 0
 
         # hook (grapple)
         self.hook_cooldown_ms = 500  # reduced cooldown between uses
@@ -66,12 +68,19 @@ class Hero(pygame.sprite.Sprite):
         self._hook_momentum_x = 0.0
         self._hook_momentum_remainder = 0.0
 
+        # collision tuning
+        self._banana_hitbox_shrink = pygame.Vector2(16, 12)
+
         # grounded state
         self.on_platform = False
 
     # ------------------- input / movement / animation -------------------
     def hero_input(self, hooks_group: pygame.sprite.Group | None):
         keys = pygame.key.get_pressed()
+        now = pygame.time.get_ticks()
+
+        if self.infinite_bananas and not self.has_banana and now >= self._banana_refill_time:
+            self.has_banana = True
 
         # Jump allowed if on ground or platform
         jump_key = self.controls.get("jump")
@@ -105,10 +114,11 @@ class Hero(pygame.sprite.Sprite):
             self._throw_velocity = dir_vec * 12
             self._pending_throw = True
             self.has_banana = False  # consume now
+            if self.infinite_bananas:
+                self._banana_refill_time = now + 1000
 
         # Hook logic: press to fire, min 2s stick; pull on jump; release on jump up
         if hooks_group is not None:
-            now = pygame.time.get_ticks()
             hook_pressed = keys[self.controls["sling"]]
             jump_pressed = (jump_key is not None) and keys[jump_key]
 
@@ -169,8 +179,8 @@ class Hero(pygame.sprite.Sprite):
         self.rect.x += dx
 
         # apply damping so momentum dissipates over time
-        self._hook_momentum_x *= 0.9
-        if abs(self._hook_momentum_x) < 0.05:
+        self._hook_momentum_x *= 0.96
+        if abs(self._hook_momentum_x) < 0.08:
             self._hook_momentum_x = 0.0
             self._hook_momentum_remainder = 0.0
 
@@ -229,6 +239,14 @@ class Hero(pygame.sprite.Sprite):
         self.is_throwing = True
         self.hero_throw_index = 0.0
 
+    def banana_hitbox(self) -> pygame.Rect:
+        shrink_x = int(self._banana_hitbox_shrink.x)
+        shrink_y = int(self._banana_hitbox_shrink.y)
+        hitbox = self.rect.inflate(-shrink_x, -shrink_y)
+        if hitbox.width <= 0 or hitbox.height <= 0:
+            return self.rect.copy()
+        return hitbox
+
     def _finish_hook(self):
         """Mark the hook as finished and clear state."""
         if self.hook_sprite is not None:
@@ -238,7 +256,7 @@ class Hero(pygame.sprite.Sprite):
 
     def apply_hook_impulse(self, velocity: pygame.Vector2) -> None:
         """Receive velocity from a released hook swing."""
-        max_speed = 18.0
+        max_speed = 30.0
         impulse = pygame.Vector2(velocity)
         if impulse.length() > max_speed:
             impulse.scale_to_length(max_speed)
@@ -262,6 +280,8 @@ class Hero(pygame.sprite.Sprite):
         self._pending_throw = False
         self.health = float(self.max_health)
         self.on_platform = False
+        self.has_banana = self.infinite_bananas
+        self._banana_refill_time = 0
 
         # hook state
         self.hook_ready_time = 0

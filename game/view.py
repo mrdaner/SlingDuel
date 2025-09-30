@@ -3,7 +3,15 @@ from __future__ import annotations
 
 import pygame
 
-from constants import COLOR_BG, MAX_HEALTH, SCREEN_WIDTH
+from constants import (
+    COLOR_BG,
+    MAX_HEALTH,
+    SCREEN_WIDTH,
+    SCREEN_HEIGHT,
+    GROUND_Y,
+    PROJECTILE_GRAVITY,
+    MAX_PROJECTILE_FALL_SPEED,
+)
 from sprites.hero import Hero
 
 from .resources import GameResources
@@ -26,7 +34,7 @@ class GameSceneRenderer:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def draw_start_screen(self, winner: Hero | None = None, draw: bool = False) -> None:
+    def draw_start_screen(self, winner: Hero | None = None, draw: bool = False, *, test_mode: bool = False) -> None:
         self.screen.fill(COLOR_BG)
         self.screen.blit(self._title_surf, self._title_rect)
 
@@ -52,6 +60,22 @@ class GameSceneRenderer:
             outcome_rect = outcome_surf.get_rect(center=self._result_center)
             self.screen.blit(outcome_surf, outcome_rect)
 
+        status_color = (230, 110, 110) if test_mode else (160, 205, 255)
+        status_text = f"Test Mode: {'ON' if test_mode else 'OFF'}"
+        status_surf = self.resources.name_font.render(status_text, False, status_color)
+        status_rect = status_surf.get_rect(center=(SCREEN_WIDTH // 2, self._prompt_center[1] + 90))
+        self.screen.blit(status_surf, status_rect)
+
+        toggle_hint = "Press T to toggle test mode"
+        hint_surf = self.resources.name_font.render(toggle_hint, False, (210, 210, 210))
+        hint_rect = hint_surf.get_rect(center=(SCREEN_WIDTH // 2, status_rect.bottom + 40))
+        self.screen.blit(hint_surf, hint_rect)
+
+        remap_hint = "Press K to remap controls"
+        remap_surf = self.resources.name_font.render(remap_hint, False, (210, 210, 210))
+        remap_rect = remap_surf.get_rect(center=(SCREEN_WIDTH // 2, hint_rect.bottom + 32))
+        self.screen.blit(remap_surf, remap_rect)
+
     def draw_gameplay(self, world: GameWorld) -> None:
         res = self.resources
         self.screen.blit(res.sky, (0, 0))
@@ -71,6 +95,76 @@ class GameSceneRenderer:
         self._draw_name_tags(world)
         self._draw_hooks(world)
         self._draw_aim_targets(world)
+        self._draw_trajectories(world)
+        self._draw_debug_boxes(world)
+
+    def draw_pause_overlay(self, *, test_mode: bool) -> None:
+        overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        self.screen.blit(overlay, (0, 0))
+
+        title = self.resources.game_font.render("Paused", False, (245, 245, 245))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80))
+        self.screen.blit(title, title_rect)
+
+        lines = [
+            "Press ESC to continue",
+            "Press M to return to menu",
+            "Press K to remap controls",
+        ]
+        if test_mode:
+            lines.append("Press T to toggle test mode")
+
+        for idx, text in enumerate(lines):
+            surf = self.resources.name_font.render(text, False, (220, 220, 220))
+            rect = surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + idx * 40))
+            self.screen.blit(surf, rect)
+
+    def draw_keymap_menu(self, entries: list[dict], selected_index: int, awaiting: bool, *, test_mode: bool) -> None:
+        self.screen.fill(COLOR_BG)
+
+        title = self.resources.game_font.render("Remap Controls", False, (245, 245, 245))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 120))
+        self.screen.blit(title, title_rect)
+
+        info_color = (220, 220, 220)
+        info_text = "Use Up/Down to select, Enter to rebind, R to reset, ESC to exit"
+        info_surf = self.resources.name_font.render(info_text, False, info_color)
+        info_rect = info_surf.get_rect(center=(SCREEN_WIDTH // 2, title_rect.bottom + 40))
+        self.screen.blit(info_surf, info_rect)
+
+        if awaiting and 0 <= selected_index < len(entries):
+            entry = entries[selected_index]
+            waiting_text = f"Press new key for {entry['player']} - {entry['action_label']}"
+            waiting_surf = self.resources.name_font.render(waiting_text, False, (255, 200, 120))
+            waiting_rect = waiting_surf.get_rect(center=(SCREEN_WIDTH // 2, info_rect.bottom + 40))
+            self.screen.blit(waiting_surf, waiting_rect)
+            list_start_y = waiting_rect.bottom + 30
+        else:
+            list_start_y = info_rect.bottom + 30
+
+        row_height = 34
+        box_margin_x = 140
+        for idx, entry in enumerate(entries):
+            row_y = list_start_y + idx * row_height
+            row_rect = pygame.Rect(80, row_y - 18, SCREEN_WIDTH - 160, row_height)
+            if idx == selected_index:
+                color = (70, 110, 190) if not awaiting else (180, 120, 40)
+                pygame.draw.rect(self.screen, color, row_rect, border_radius=6)
+            label = f"{entry['player']} — {entry['action_label']}"
+            key_label = entry['key_name'].upper()
+            label_surf = self.resources.name_font.render(label, False, (250, 250, 250))
+            key_surf = self.resources.name_font.render(key_label, False, (250, 250, 250))
+            label_pos = label_surf.get_rect(midleft=(box_margin_x, row_y))
+            key_pos = key_surf.get_rect(midright=(SCREEN_WIDTH - box_margin_x, row_y))
+            self.screen.blit(label_surf, label_pos)
+            self.screen.blit(key_surf, key_pos)
+
+        status_color = (230, 110, 110) if test_mode else (160, 205, 255)
+        status_text = f"Test Mode: {'ON' if test_mode else 'OFF'}"
+        status_surf = self.resources.name_font.render(status_text, False, status_color)
+        status_rect = status_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 80))
+        self.screen.blit(status_surf, status_rect)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -143,9 +237,92 @@ class GameSceneRenderer:
     def _draw_aim_targets(self, world: GameWorld) -> None:
         for player in world.players:
             aim_pos = player.get_aim_pos()
-            pygame.draw.line(self.screen, (255, 255, 255), player.rect.center, aim_pos, 3)
             target_rect = self.resources.target.get_rect(center=aim_pos)
-            self.screen.blit(self.resources.target, target_rect)
+            target_img = self.resources.target if player.facing_right else self.resources.target_left
+            target_rect = target_img.get_rect(center=aim_pos)
+            self.screen.blit(target_img, target_rect)
+
+    def _draw_dotted_line(self, start: tuple[int, int], end: tuple[int, int], color: tuple[int, int, int], width: int, dash_len: int, gap_len: int) -> None:
+        """Placeholder kept for future reactivation of dotted drawing."""
+        pygame.draw.line(self.screen, color, start, end, width)
+
+    def _draw_debug_boxes(self, world: GameWorld) -> None:
+        test_mode = any(getattr(player, "infinite_bananas", False) for player in world.players)
+        if not test_mode:
+            return
+
+        red = (220, 40, 40)
+        for player in world.players:
+            pygame.draw.rect(self.screen, red, player.rect, 2)
+        for banana in world.banana_pickups.sprites():
+            pygame.draw.rect(self.screen, red, banana.rect, 2)
+        for banana in world.throwables.sprites():
+            pygame.draw.rect(self.screen, red, banana.rect, 2)
+        for heart in world.health_pickups.sprites():
+            pygame.draw.rect(self.screen, red, heart.rect, 2)
+        for platform in world.platforms.sprites():
+            pygame.draw.rect(self.screen, red, platform.rect, 2)
+        for hook in world.hooks.sprites():
+            pygame.draw.rect(self.screen, red, hook.rect, 2)
+
+    def _draw_trajectories(self, world: GameWorld) -> None:
+        if not any(getattr(player, "infinite_bananas", False) for player in world.players):
+            return
+
+        for player in world.players:
+            start = pygame.Vector2(player.rect.center)
+            aim_dir = player._aim_direction()
+
+            banana_velocity = aim_dir * 12
+            banana_path = self._simulate_trajectory(
+                start,
+                banana_velocity,
+                gravity=PROJECTILE_GRAVITY,
+                max_fall=MAX_PROJECTILE_FALL_SPEED,
+                gravity_scale=1.0,
+            )
+            self._plot_path(banana_path, color=(250, 220, 90))
+
+            hook_velocity = aim_dir * (14 * 1.3 * 1.5)
+            hook_path = self._simulate_trajectory(
+                start,
+                hook_velocity,
+                gravity=PROJECTILE_GRAVITY,
+                max_fall=MAX_PROJECTILE_FALL_SPEED,
+                gravity_scale=0.5,
+            )
+            self._plot_path(hook_path, color=(180, 230, 255))
+
+    def _simulate_trajectory(
+        self,
+        start: pygame.Vector2,
+        velocity: pygame.Vector2,
+        *,
+        gravity: float,
+        gravity_scale: float,
+        max_fall: float | None,
+        steps: int = 90,
+    ) -> list[tuple[int, int]]:
+        pos = pygame.Vector2(start)
+        vel = pygame.Vector2(velocity)
+        points: list[tuple[int, int]] = []
+
+        for _ in range(steps):
+            pos += vel
+            vel.y += gravity * gravity_scale
+            if max_fall is not None and vel.y > max_fall:
+                vel.y = max_fall
+            points.append((int(pos.x), int(pos.y)))
+            if pos.y >= GROUND_Y or pos.x < 0 or pos.x > SCREEN_WIDTH:
+                break
+
+        return points
+
+    def _plot_path(self, points: list[tuple[int, int]], color: tuple[int, int, int]) -> None:
+        if len(points) < 2:
+            return
+        for pt in points:
+            pygame.draw.circle(self.screen, color, pt, 2)
 
 
 __all__ = ["GameSceneRenderer"]
