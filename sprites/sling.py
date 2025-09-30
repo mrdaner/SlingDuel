@@ -19,6 +19,9 @@ class Sling(pygame.sprite.Sprite):
     pull_speed = 12          # strong pull
     break_dist = 18          # “arrived” distance
 
+    ATTACH_GRACE_MS = 90
+    MIN_TRAVEL_BEFORE_ATTACH = 30
+
     def __init__(self, pos, velocity, owner=None):
         super().__init__()
         self.owner = owner
@@ -33,6 +36,8 @@ class Sling(pygame.sprite.Sprite):
         self.anchor = None
         self.attached_at_ms = None
         self.spawned_at_ms = pygame.time.get_ticks()
+        self.attach_enabled_at_ms = self.spawned_at_ms + self.ATTACH_GRACE_MS
+        self.travelled = 0.0
 
         # swing state
         self.rope_len = None
@@ -94,21 +99,27 @@ class Sling(pygame.sprite.Sprite):
             self._apply_gravity()
             self.rect.x += self.velocity.x
             self.rect.y += self.velocity.y
+            self.travelled += self.velocity.length()
+
+            allow_attach = (
+                now >= self.attach_enabled_at_ms or
+                self.travelled >= self.MIN_TRAVEL_BEFORE_ATTACH
+            )
 
             # Attach to ceiling
-            if self.rect.top <= 0:
+            if allow_attach and self.rect.top <= 0:
                 self.rect.top = 0
                 self.attach()
                 return
 
             # Attach to ground
-            if self.rect.bottom >= GROUND_Y:
+            if allow_attach and self.rect.bottom >= GROUND_Y:
                 self.rect.bottom = GROUND_Y
                 self.attach()
                 return
 
             # Attach to platforms (top/stand area)
-            if platforms:
+            if allow_attach and platforms:
                 hit = pygame.sprite.spritecollideany(self, platforms)
                 if hit:
                     self.rect.bottom = hit.stand_rect.top
