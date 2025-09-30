@@ -17,19 +17,40 @@ class GameSceneRenderer:
         self.screen = screen
         self.resources = resources
 
-        title_color = (111, 196, 169)
-        self._title_surf = resources.game_font.render("Slingduel", False, title_color)
+        self._title_color = (111, 196, 169)
+        self._title_surf = resources.game_font.render("Slingduel", False, self._title_color)
         self._title_rect = self._title_surf.get_rect(center=(SCREEN_WIDTH // 2, 130))
-        self._message_surf = resources.game_font.render("Press SPACE to START", False, title_color)
-        self._message_rect = self._message_surf.get_rect(center=(SCREEN_WIDTH // 2, 320))
+        self._prompt_center = (SCREEN_WIDTH // 2, 320)
+        self._result_center = (SCREEN_WIDTH // 2, 260)
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def draw_start_screen(self) -> None:
+    def draw_start_screen(self, winner: Hero | None = None, draw: bool = False) -> None:
         self.screen.fill(COLOR_BG)
         self.screen.blit(self._title_surf, self._title_rect)
-        self.screen.blit(self._message_surf, self._message_rect)
+
+        prompt_text = "Press SPACE to START"
+        if winner is not None or draw:
+            prompt_text = "Press SPACE to PLAY AGAIN"
+        prompt_surf = self.resources.game_font.render(prompt_text, False, self._title_color)
+        prompt_rect = prompt_surf.get_rect(center=self._prompt_center)
+        self.screen.blit(prompt_surf, prompt_rect)
+
+        outcome_text: str | None = None
+        outcome_color = self._title_color
+
+        if draw:
+            outcome_text = "Draw!"
+            outcome_color = (240, 240, 240)
+        elif winner is not None:
+            outcome_text = f"{winner.name} Wins!"
+            outcome_color = winner.name_color
+
+        if outcome_text:
+            outcome_surf = self.resources.game_font.render(outcome_text, False, outcome_color)
+            outcome_rect = outcome_surf.get_rect(center=self._result_center)
+            self.screen.blit(outcome_surf, outcome_rect)
 
     def draw_gameplay(self, world: GameWorld) -> None:
         res = self.resources

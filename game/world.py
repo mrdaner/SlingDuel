@@ -89,6 +89,19 @@ class GameWorld:
     def round_over(self) -> bool:
         return any(player.is_dead for player in self.players)
 
+    @property
+    def round_winner(self) -> Hero | None:
+        """Return the surviving hero when a round ends, otherwise None."""
+        alive = [player for player in self.players if not player.is_dead]
+        if len(alive) == 1:
+            return alive[0]
+        return None
+
+    @property
+    def round_draw(self) -> bool:
+        """True when all players are eliminated at the end of a round."""
+        return all(player.is_dead for player in self.players)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

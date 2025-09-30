@@ -4,6 +4,7 @@ from __future__ import annotations
 import pygame
 
 from constants import FPS, SCREEN_HEIGHT, SCREEN_WIDTH
+from sprites.hero import Hero
 from .resources import GameResources
 from .view import GameSceneRenderer
 from .world import GameWorld
@@ -23,6 +24,8 @@ class Game:
         self.renderer = GameSceneRenderer(self.screen, self.resources)
 
         self.game_active = False
+        self.last_winner: Hero | None = None
+        self.last_round_draw = False
 
         self._spawn_event = pygame.USEREVENT + 10
         self._regen_event = pygame.USEREVENT + 11
@@ -42,9 +45,11 @@ class Game:
                 self.world.update()
                 self.renderer.draw_gameplay(self.world)
                 if self.world.round_over:
+                    self.last_winner = self.world.round_winner
+                    self.last_round_draw = self.world.round_draw
                     self.game_active = False
             else:
-                self.renderer.draw_start_screen()
+                self.renderer.draw_start_screen(winner=self.last_winner, draw=self.last_round_draw)
 
             pygame.display.update()
             self.clock.tick(FPS)
@@ -74,6 +79,8 @@ class Game:
 
     def _start_round(self) -> None:
         self.game_active = True
+        self.last_winner = None
+        self.last_round_draw = False
         self.world.begin_round()
 
 
