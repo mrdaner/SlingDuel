@@ -1,4 +1,4 @@
-"""High level orchestration of the SlingDuel gameplay loop."""
+"""High level orchestration of the SlingDuel gameplay loop and UI states."""
 from __future__ import annotations
 
 import pygame

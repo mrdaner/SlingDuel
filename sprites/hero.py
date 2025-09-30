@@ -1,4 +1,4 @@
-# sprites/hero.py
+"""Hero sprite logic: player movement, combat, and grappling hook control."""
 import math
 import pygame
 from constants import SCREEN_WIDTH, GROUND_Y, HERO_JUMP_FORCE, GRAVITY_PER_TICK, MAX_HEALTH
@@ -41,37 +41,37 @@ class Hero(pygame.sprite.Sprite):
         self.max_health = MAX_HEALTH
         self.health = float(self.max_health)
 
-        # aim — 30% closer
+        # Aim reticle rotates around the hero; shrink radius to keep targets readable.
         self.aim_radius = int(150 * 0.7)
         self.aim_angle = 0.0
         self.aim_step = 0.06
         self.aim_min = -1.25
         self.aim_max =  1.25
 
-        # inventory
+        # Player starts unarmed; this flag flips when touching a banana pickup.
         self.has_banana = False
         self.infinite_bananas = False
 
-        # throws
+        # Throw state is buffered so the projectile spawns after the animation frame kicks off.
         self._pending_throw = False
         self._throw_velocity = pygame.Vector2()
         self._banana_refill_time = 0
 
-        # hook (grapple)
-        self.hook_cooldown_ms = 500  # reduced cooldown between uses
+        # Grapple timing; fast recovery keeps test mode iterations tight.
+        self.hook_cooldown_ms = 500
         self.hook_ready_time = 0
         self.hook_active = False
         self.hook_sprite: Sling | None = None
         self._hook_prev = False  # previous-frame pressed state
 
-        # momentum imparted when releasing a hook swing
+        # Store horizontal impulse inflected by the hook so we can bleed it off each frame.
         self._hook_momentum_x = 0.0
         self._hook_momentum_remainder = 0.0
 
-        # collision tuning
+        # Shrink banana hit detection so glancing contacts do not register.
         self._banana_hitbox_shrink = pygame.Vector2(16, 12)
 
-        # grounded state
+        # Track when platform friction should zero vertical speed.
         self.on_platform = False
 
     # ------------------- input / movement / animation -------------------
@@ -82,12 +82,12 @@ class Hero(pygame.sprite.Sprite):
         if self.infinite_bananas and not self.has_banana and now >= self._banana_refill_time:
             self.has_banana = True
 
-        # Jump allowed if on ground or platform
+        # Only allow the jump key to fire when feet are planted or on a platform.
         jump_key = self.controls.get("jump")
         if jump_key is not None and keys[jump_key] and (self.rect.bottom >= GROUND_Y or self.on_platform):
             self.gravity = HERO_JUMP_FORCE
 
-        # Horizontal move + facing
+        # Acceleration is constant; left/right key overrides residual hook momentum.
         if keys[self.controls["left"]]:
             self.speed = -6
             self.facing_right = False
@@ -101,13 +101,13 @@ class Hero(pygame.sprite.Sprite):
             self._hook_momentum_x = 0.0
             self._hook_momentum_remainder = 0.0
 
-        # Aim around circle
+        # Adjust aim reticle with the same keys used for the menus (W/S or custom bindings).
         if keys[self.controls["up"]]:
             self.aim_angle = min(self.aim_max, self.aim_angle + self.aim_step)
         elif keys[self.controls["down"]]:
             self.aim_angle = max(self.aim_min, self.aim_angle - self.aim_step)
 
-        # Banana throw (only if carrying one)
+        # Throw only if the hero is currently carrying a banana (or in infinite test mode).
         if keys[self.controls["throw"]] and self.has_banana and not self._pending_throw:
             dir_vec = self._aim_direction()
             self._start_throw_animation()
@@ -117,28 +117,28 @@ class Hero(pygame.sprite.Sprite):
             if self.infinite_bananas:
                 self._banana_refill_time = now + 1000
 
-        # Hook logic: press to fire, min 2s stick; pull on jump; release on jump up
+        # Hook dispatch and rope control share logic between normal and test modes.
         if hooks_group is not None:
             hook_pressed = keys[self.controls["sling"]]
             jump_pressed = (jump_key is not None) and keys[jump_key]
 
-            # press edge → spawn if ready
+            # Single-shot on the frame the key becomes active.
             if hook_pressed and not self._hook_prev:
                 if (not self.hook_active) and (now >= self.hook_ready_time):
                     dir_vec = self._aim_direction()
-                    velocity = dir_vec * (14 * 1.3)  # 30% longer throw
+                    velocity = dir_vec * (14 * 1.3)  # hook starts faster than bananas
                     self.hook_sprite = Sling(self.rect.center, velocity, owner=self)
                     hooks_group.add(self.hook_sprite)
                     self._start_throw_animation()
                     self.hook_active = True
                     self.hook_ready_time = now + self.hook_cooldown_ms
 
-            # release edge → (do nothing immediately; Sling enforces min 2s)
+            # Hook releases are handled by the sling sprite after the cooldown window.
             if (not hook_pressed) and self._hook_prev:
                 if self.hook_active and self.hook_sprite:
                     self.hook_sprite.request_release()  # tells hook key is up
 
-            # while held, if attached and jump is *released*, it will detach via hook logic
+            # Passing jump state lets the hook decide whether to reel or to swing freely.
             if self.hook_active and self.hook_sprite:
                 self.hook_sprite.set_pull(jump_pressed)
 

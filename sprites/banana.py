@@ -1,4 +1,4 @@
-# sprites/banana.py
+"""Banana projectile and pickup behaviours (flight, splat, and damage)."""
 import pygame
 from .throwable import Throwable
 from constants import (
@@ -30,7 +30,7 @@ class Banana(Throwable):
       - 'splatted_temp'       : splatted (after hit or stepped); disappears after N ms
     """
 
-    OWNER_IMMUNITY_MS = 150  # ignore collisions with owner for first 150ms
+    OWNER_IMMUNITY_MS = 150  # ignore collisions with owner for first few frames
 
     def __init__(self, pos, velocity, image=None, owner=None, damage=1.0):
         base = image if image is not None else get_banana_image()
@@ -60,7 +60,7 @@ class Banana(Throwable):
         self._prev_bottom = self.rect.bottom
 
     def can_hit(self, target) -> bool:
-        # Only while flying; never after splatted
+        # Once the banana splats we stop checking for hit collisions.
         if self.state != "flying":
             return False
         if self._already_damaged_player:
@@ -81,17 +81,17 @@ class Banana(Throwable):
 
     def _land_on_surface(self, platforms):
         """Snap to ground or platform if intersecting from above; return True if landed."""
-        # ground check
+        # Ground check mirrors player collision to keep splats aligned with the floor.
         if self._prev_bottom <= GROUND_Y and self.rect.bottom >= GROUND_Y and self.velocity.y >= 0:
             self.rect.bottom = GROUND_Y
             return True
 
-        # platforms: only from above onto stand_rect
+        # Platforms only catch bananas that fall from above; we ignore side hits.
         if platforms:
             for plat in platforms:
                 top = plat.stand_rect.top
                 if self._prev_bottom <= top and self.rect.bottom >= top and self.velocity.y >= 0:
-                    # x overlap too
+                    # Require horizontal overlap to avoid phantom catches.
                     if self.rect.right >= plat.stand_rect.left and self.rect.left <= plat.stand_rect.right:
                         self.rect.bottom = top
                         return True
@@ -143,7 +143,7 @@ class Banana(Throwable):
                 self.despawn_at_ms = pygame.time.get_ticks() + 500  # 0.5s after landing
 
         elif self.state == "splatted_persist":
-            # waits until stepped_on_by; nothing here
+            # Wait for a player to step on the splat before starting the despawn timer.
             pass
 
         elif self.state == "splatted_temp":

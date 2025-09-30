@@ -1,4 +1,4 @@
-"""GameWorld aggregates all mutable runtime state for a SlingDuel match."""
+"""GameWorld aggregates mutable runtime state and mediates cross-system interactions."""
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,4 +1,4 @@
-# keymap.py
+"""Helpers for loading, normalising, and persisting configurable key bindings."""
 import json
 import os
 import pygame

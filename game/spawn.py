@@ -1,4 +1,4 @@
-"""Logic for creating platforms and pickups within the arena."""
+"""Spawn logic for platforms, bananas, and health pickups."""
 from __future__ import annotations
 
 from random import choice, randint

@@ -1,4 +1,4 @@
-"""Rendering helpers for SlingDuel game scenes."""
+"""Rendering helpers for SlingDuel game scenes (HUD, sprites, debug overlays)."""
 from __future__ import annotations
 
 import pygame
@@ -25,7 +25,9 @@ class GameSceneRenderer:
         self.screen = screen
         self.resources = resources
 
-        self._title_color = (111, 196, 169)
+        self._title_color = (243, 212, 67)  # ripe banana
+        self._accent_color = (123, 86, 25)  # banana stem brown
+        self._muted_color = (244, 230, 170)
         self._title_surf = resources.game_font.render("Slingduel", False, self._title_color)
         self._title_rect = self._title_surf.get_rect(center=(SCREEN_WIDTH // 2, 130))
         self._prompt_center = (SCREEN_WIDTH // 2, 320)
@@ -41,7 +43,7 @@ class GameSceneRenderer:
         prompt_text = "Press SPACE to START"
         if winner is not None or draw:
             prompt_text = "Press SPACE to PLAY AGAIN"
-        prompt_surf = self.resources.game_font.render(prompt_text, False, self._title_color)
+        prompt_surf = self.resources.game_font.render(prompt_text, False, self._accent_color)
         prompt_rect = prompt_surf.get_rect(center=self._prompt_center)
         self.screen.blit(prompt_surf, prompt_rect)
 
@@ -60,19 +62,19 @@ class GameSceneRenderer:
             outcome_rect = outcome_surf.get_rect(center=self._result_center)
             self.screen.blit(outcome_surf, outcome_rect)
 
-        status_color = (230, 110, 110) if test_mode else (160, 205, 255)
+        status_color = (198, 120, 30) if test_mode else self._accent_color
         status_text = f"Test Mode: {'ON' if test_mode else 'OFF'}"
         status_surf = self.resources.name_font.render(status_text, False, status_color)
         status_rect = status_surf.get_rect(center=(SCREEN_WIDTH // 2, self._prompt_center[1] + 90))
         self.screen.blit(status_surf, status_rect)
 
         toggle_hint = "Press T to toggle test mode"
-        hint_surf = self.resources.name_font.render(toggle_hint, False, (210, 210, 210))
+        hint_surf = self.resources.name_font.render(toggle_hint, False, self._muted_color)
         hint_rect = hint_surf.get_rect(center=(SCREEN_WIDTH // 2, status_rect.bottom + 40))
         self.screen.blit(hint_surf, hint_rect)
 
         remap_hint = "Press K to remap controls"
-        remap_surf = self.resources.name_font.render(remap_hint, False, (210, 210, 210))
+        remap_surf = self.resources.name_font.render(remap_hint, False, self._muted_color)
         remap_rect = remap_surf.get_rect(center=(SCREEN_WIDTH // 2, hint_rect.bottom + 32))
         self.screen.blit(remap_surf, remap_rect)
 
@@ -103,7 +105,7 @@ class GameSceneRenderer:
         overlay.fill((0, 0, 0, 170))
         self.screen.blit(overlay, (0, 0))
 
-        title = self.resources.game_font.render("Paused", False, (245, 245, 245))
+        title = self.resources.game_font.render("Paused", False, self._title_color)
         title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80))
         self.screen.blit(title, title_rect)
 
@@ -116,18 +118,18 @@ class GameSceneRenderer:
             lines.append("Press T to toggle test mode")
 
         for idx, text in enumerate(lines):
-            surf = self.resources.name_font.render(text, False, (220, 220, 220))
+            surf = self.resources.name_font.render(text, False, self._muted_color)
             rect = surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + idx * 40))
             self.screen.blit(surf, rect)
 
     def draw_keymap_menu(self, entries: list[dict], selected_index: int, awaiting: bool, *, test_mode: bool) -> None:
         self.screen.fill(COLOR_BG)
 
-        title = self.resources.game_font.render("Remap Controls", False, (245, 245, 245))
+        title = self.resources.game_font.render("Remap Controls", False, self._title_color)
         title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 120))
         self.screen.blit(title, title_rect)
 
-        info_color = (220, 220, 220)
+        info_color = self._muted_color
         info_text = "Use Up/Down to select, Enter to rebind, R to reset, ESC to exit"
         info_surf = self.resources.name_font.render(info_text, False, info_color)
         info_rect = info_surf.get_rect(center=(SCREEN_WIDTH // 2, title_rect.bottom + 40))
@@ -136,7 +138,7 @@ class GameSceneRenderer:
         if awaiting and 0 <= selected_index < len(entries):
             entry = entries[selected_index]
             waiting_text = f"Press new key for {entry['player']} - {entry['action_label']}"
-            waiting_surf = self.resources.name_font.render(waiting_text, False, (255, 200, 120))
+            waiting_surf = self.resources.name_font.render(waiting_text, False, (218, 150, 32))
             waiting_rect = waiting_surf.get_rect(center=(SCREEN_WIDTH // 2, info_rect.bottom + 40))
             self.screen.blit(waiting_surf, waiting_rect)
             list_start_y = waiting_rect.bottom + 30
@@ -149,18 +151,18 @@ class GameSceneRenderer:
             row_y = list_start_y + idx * row_height
             row_rect = pygame.Rect(80, row_y - 18, SCREEN_WIDTH - 160, row_height)
             if idx == selected_index:
-                color = (70, 110, 190) if not awaiting else (180, 120, 40)
+                color = (139, 102, 33) if not awaiting else (180, 120, 40)
                 pygame.draw.rect(self.screen, color, row_rect, border_radius=6)
             label = f"{entry['player']} — {entry['action_label']}"
             key_label = entry['key_name'].upper()
-            label_surf = self.resources.name_font.render(label, False, (250, 250, 250))
-            key_surf = self.resources.name_font.render(key_label, False, (250, 250, 250))
+            label_surf = self.resources.name_font.render(label, False, (252, 244, 205))
+            key_surf = self.resources.name_font.render(key_label, False, (252, 244, 205))
             label_pos = label_surf.get_rect(midleft=(box_margin_x, row_y))
             key_pos = key_surf.get_rect(midright=(SCREEN_WIDTH - box_margin_x, row_y))
             self.screen.blit(label_surf, label_pos)
             self.screen.blit(key_surf, key_pos)
 
-        status_color = (230, 110, 110) if test_mode else (160, 205, 255)
+        status_color = (198, 120, 30) if test_mode else self._accent_color
         status_text = f"Test Mode: {'ON' if test_mode else 'OFF'}"
         status_surf = self.resources.name_font.render(status_text, False, status_color)
         status_rect = status_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 80))
