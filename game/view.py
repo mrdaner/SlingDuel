@@ -25,9 +25,11 @@ class GameSceneRenderer:
         self.screen = screen
         self.resources = resources
 
-        self._title_color = (243, 212, 67)  # ripe banana
-        self._accent_color = (123, 86, 25)  # banana stem brown
-        self._muted_color = (244, 230, 170)
+        self._title_color = (248, 226, 92)   # ripe banana flesh
+        self._accent_color = (156, 102, 31)  # banana stem brown
+        self._muted_color = (246, 236, 200)  # soft highlight
+        self._callout_color = (214, 143, 46)  # amber callouts
+        self._warning_color = (207, 61, 33)   # test mode warning
         self._title_surf = resources.game_font.render("Slingduel", False, self._title_color)
         self._title_rect = self._title_surf.get_rect(center=(SCREEN_WIDTH // 2, 130))
         self._prompt_center = (SCREEN_WIDTH // 2, 320)
@@ -62,7 +64,7 @@ class GameSceneRenderer:
             outcome_rect = outcome_surf.get_rect(center=self._result_center)
             self.screen.blit(outcome_surf, outcome_rect)
 
-        status_color = (198, 120, 30) if test_mode else self._accent_color
+        status_color = self._warning_color if test_mode else self._accent_color
         status_text = f"Test Mode: {'ON' if test_mode else 'OFF'}"
         status_surf = self.resources.name_font.render(status_text, False, status_color)
         status_rect = status_surf.get_rect(center=(SCREEN_WIDTH // 2, self._prompt_center[1] + 90))
@@ -138,7 +140,7 @@ class GameSceneRenderer:
         if awaiting and 0 <= selected_index < len(entries):
             entry = entries[selected_index]
             waiting_text = f"Press new key for {entry['player']} - {entry['action_label']}"
-            waiting_surf = self.resources.name_font.render(waiting_text, False, (218, 150, 32))
+            waiting_surf = self.resources.name_font.render(waiting_text, False, self._callout_color)
             waiting_rect = waiting_surf.get_rect(center=(SCREEN_WIDTH // 2, info_rect.bottom + 40))
             self.screen.blit(waiting_surf, waiting_rect)
             list_start_y = waiting_rect.bottom + 30
@@ -151,7 +153,7 @@ class GameSceneRenderer:
             row_y = list_start_y + idx * row_height
             row_rect = pygame.Rect(80, row_y - 18, SCREEN_WIDTH - 160, row_height)
             if idx == selected_index:
-                color = (139, 102, 33) if not awaiting else (180, 120, 40)
+                color = self._accent_color if not awaiting else self._callout_color
                 pygame.draw.rect(self.screen, color, row_rect, border_radius=6)
             label = f"{entry['player']} — {entry['action_label']}"
             key_label = entry['key_name'].upper()

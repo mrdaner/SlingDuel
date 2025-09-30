@@ -7,7 +7,8 @@ from .banana import Banana
 from .sling import Sling
 
 class Hero(pygame.sprite.Sprite):
-    def __init__(self, controls: dict | None = None, start_x: int = 200, name="Player", name_color=(255,255,255)):
+    def __init__(self, controls: dict | None = None, start_x: int = 200,
+                 name="Player", name_color=(255,255,255), *, facing_right: bool = True):
         super().__init__()
 
         stand, self.hero_run, self.hero_jump, self.hero_throw = get_hero_frames()
@@ -36,7 +37,8 @@ class Hero(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(midbottom=(start_x, GROUND_Y))
         self.gravity = 0
         self.speed = 0
-        self.facing_right = True
+        self._initial_facing_right = facing_right
+        self.facing_right = facing_right
 
         self.max_health = MAX_HEALTH
         self.health = float(self.max_health)
@@ -275,7 +277,7 @@ class Hero(pygame.sprite.Sprite):
         self.hero_throw_index = 0.0
         self.is_throwing = False
         self.image = self.hero_stand
-        self.facing_right = True
+        self.facing_right = self._initial_facing_right
         self.aim_angle = 0.0
         self._pending_throw = False
         self.health = float(self.max_health)

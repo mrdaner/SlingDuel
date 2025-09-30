@@ -164,12 +164,13 @@ class GameWorld:
     # ------------------------------------------------------------------
     def _create_players(self) -> Tuple[Hero, Hero]:
         p1_controls, p2_controls = load_controls()
-        player1 = Hero(controls=p1_controls, start_x=200, name="Red", name_color=(220, 60, 60))
+        player1 = Hero(controls=p1_controls, start_x=200, name="Red", name_color=(220, 60, 60), facing_right=True)
         player2 = Hero(
             controls=p2_controls,
             start_x=SCREEN_WIDTH - 200,
             name="Blue",
             name_color=(80, 140, 255),
+            facing_right=False,
         )
         return player1, player2
 

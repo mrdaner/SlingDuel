@@ -85,8 +85,12 @@ class PickupSpawner:
         if not self._players_need_health():
             return
 
+        upper_platforms = [p for p in self._platforms.sprites() if p.rect.centery < GROUND_Y - 120]
+        if not upper_platforms:
+            upper_platforms = self._platforms.sprites()
+
         for _ in range(20):
-            platform = choice(self._platforms.sprites())
+            platform = choice(upper_platforms)
             if self._platform_has_pickup(platform):
                 continue
             x_pos = self._random_x_on_platform(platform)
