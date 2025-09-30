@@ -1,0 +1,4 @@
+{
+  "player1": { "left":"a", "right":"d", "up":"w", "down":"s", "throw":"f", "sling":"r", "jump":"c" },
+  "player2": { "left":"j", "right":"l", "up":"i", "down":"k", "throw":"h", "sling":"u", "jump":"n" }
+}
