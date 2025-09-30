@@ -3,7 +3,7 @@ import pygame
 from assets import get_heart
 
 class HealthPickup(pygame.sprite.Sprite):
-    """A heart pickup that grants +1 HP (up to max) when a player touches it."""
+    """Half-heart pickup (+0.5 HP). Placed midbottom=(x,y_bottom)."""
     def __init__(self, x: int, y_bottom: int):
         super().__init__()
         self.image = get_heart()

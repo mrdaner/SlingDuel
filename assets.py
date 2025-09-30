@@ -31,7 +31,6 @@ def _scale(surf: pygame.Surface) -> pygame.Surface:
 
 def get_hero_frames():
     hero_dir = _ASSET_ROOT / "Hero"
-
     stand = _scale(load_image(hero_dir / "Hero_stand.png"))
     run = [
         stand,
@@ -52,29 +51,28 @@ def get_hero_frames():
     return stand, run, jump, throw
 
 def get_target():
-    surf = pygame.image.load(str(_ASSET_ROOT / "Target.png")).convert_alpha()
+    surf = load_image(_ASSET_ROOT / "Target.png")
     return _scale(surf)
 
 def get_heart():
-    surf = pygame.image.load(str(_ASSET_ROOT / "Heart.png")).convert_alpha()
+    surf = load_image(_ASSET_ROOT / "Heart.png")
     return _scale(surf)
 
 def get_heart_half():
-    surf = pygame.image.load(str(_ASSET_ROOT / "Heart_2.png")).convert_alpha()
+    surf = load_image(_ASSET_ROOT / "Heart_2.png")
     return _scale(surf)
 
 def get_banana_image():
     return _scale(load_image(_ASSET_ROOT / "Banana.png"))
 
-def get_banana_splashed() -> pygame.Surface:
-    surf = pygame.image.load(str(_ASSET_ROOT / "Banana_squashed.png")).convert_alpha()
-    return _scale(surf)
+def get_banana_splashed():
+    return _scale(load_image(_ASSET_ROOT / "Banana_squashed.png"))
 
 def get_hook_image() -> pygame.Surface:
     return _scale(load_image(_ASSET_ROOT / "Hook.png"))
 
 def get_floor_images() -> list[pygame.Surface]:
-    """Return Floor_1..4 surfaces, first scaled by SCALE, then enlarged by +50%."""
+    """Return Floor_1..4 surfaces, scaled overall and then enlarged by 1.5x."""
     floors = []
     floor_dir = _ASSET_ROOT / "Floor"
     for i in (1, 2, 3, 4):

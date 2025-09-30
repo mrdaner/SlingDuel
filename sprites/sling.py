@@ -1,39 +1,23 @@
 # sprites/sling.py
+import math
 import pygame
-from constants import (
-    SCREEN_WIDTH,
-    GROUND_Y,
-    PROJECTILE_GRAVITY,
-    MAX_PROJECTILE_FALL_SPEED,
-)
+from constants import SCREEN_WIDTH, GROUND_Y, PROJECTILE_GRAVITY, MAX_PROJECTILE_FALL_SPEED
 from assets import get_hook_image
 
-
 class Sling(pygame.sprite.Sprite):
+    """Grapple (hook).
+       - Flies outward with small gravity.
+       - Attaches to ground, platforms (top half), or ceiling.
+       - Stays a minimum of 2s even if key is released.
+       - While attached:
+           * If owner's jump is held -> pull hard towards anchor (launch past point)
+           * Else -> swing (pendulum-like)
+       - Releases on owner's jump key release (if min time passed) or auto when done.
     """
-    Grapple hook projectile: sticks for a short time, can reel-in on jump, or act like a sling.
-    - On attach: stays for STICK_MS by default (even if the key is released)
-    - If the player HOLDS/PRESSES JUMP while attached -> strong reel-in toward anchor
-      (on reaching anchor, launch slightly forward past the cling point)
-    - If not jumping -> behave like a sling: keep rope length ~constant and allow swinging.
-    """
-
-    # How long it stays attached if the player doesn't reel in
-    STICK_MS = 2000
-
-    # Safety cap (if you really want to force-kill after some long time)
-    DETACH_AFTER_MS = 6000
-
-    # Reel-in (winch) tuning
-    break_dist = 20            # distance we consider "arrived"
-    MIN_PULL = 10              # minimum pull step (px/frame)
-    PULL_GAIN = 0.12           # extra pull per pixel of distance
-    MAX_PULL = 30              # max pull step (px/frame)
-    OVERSHOOT_PX = 40          # how far past the anchor we launch on completion
-
-    # Sling / swing tuning
-    SWING_THRUST = 6           # tangential "push" (px/frame) to keep swinging
-    ROPE_ENFORCE = 0.35        # how strongly we correct if rope is stretched
+    MIN_STICK_MS = 2000      # minimum attach time even if key released
+    DETACH_SAFETY_MS = 7000  # hard safety
+    pull_speed = 12          # strong pull
+    break_dist = 18          # “arrived” distance
 
     def __init__(self, pos, velocity, owner=None):
         super().__init__()
@@ -42,78 +26,66 @@ class Sling(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=pos)
         self.velocity = pygame.Vector2(velocity)
 
-        # Rope attaches at bottom-left of the hook image (relative to center)
         r = self.image.get_rect()
         self.rope_anchor_local = pygame.Vector2(r.left, r.bottom) - pygame.Vector2(r.center)
 
-        # State
-        self.state = "flying"            # "flying" -> "attached" -> "done"
-        self.anchor = None               # world point where we latched
+        self.state = "flying"     # flying → attached → done
+        self.anchor = None
         self.attached_at_ms = None
-        self.rope_len = None             # fixed length once attached
+        self.spawned_at_ms = pygame.time.get_ticks()
 
-        # Remember owner's last velocity-ish (we synthesize from rect motion)
-        self._last_owner_center = None
+        # swing state
+        self.rope_len = None
+        self.theta = 0.0            # angle (around anchor)
+        self.omega = 0.0            # angular velocity
+        self.pull_mode = False      # set by hero when jump is held
+        self.release_requested = False
 
-    # --- helpers ----------------------------------------------------------
+    # ---- external controls from Hero ----
+    def set_pull(self, on: bool):
+        self.pull_mode = bool(on)
 
+    def request_release(self):
+        self.release_requested = True
+
+    # ---- helpers ----
     def rope_world_anchor(self) -> tuple[int, int]:
-        """Where the rope should connect on the hook image (world coordinates)."""
         world_anchor = pygame.Vector2(self.rect.center) + self.rope_anchor_local
         return int(world_anchor.x), int(world_anchor.y)
 
     def _apply_gravity(self):
-        # Small gravity so the hook arcs a bit before sticking
         self.velocity.y = min(self.velocity.y + PROJECTILE_GRAVITY * 0.5, MAX_PROJECTILE_FALL_SPEED)
 
-    def _owner_velocity(self) -> pygame.Vector2:
-        """Approximate owner's velocity from last frame (purely kinematic)."""
-        if not self.owner:
-            return pygame.Vector2()
-        c = pygame.Vector2(self.owner.rect.center)
-        if self._last_owner_center is None:
-            self._last_owner_center = c
-            return pygame.Vector2()
-        v = c - self._last_owner_center
-        self._last_owner_center = pygame.Vector2(self.owner.rect.center)
-        return v
-
-    def _give_tangential_kick(self):
-        """On attach: give the owner an initial tangential impulse to help start a swing."""
-        if not self.owner or not self.anchor:
-            return
-        owner_center = pygame.Vector2(self.owner.rect.center)
-        r = owner_center - pygame.Vector2(self.anchor)
-        if r.length_squared() == 0:
-            return
-        # tangent direction (perpendicular to rope)
-        t = pygame.Vector2(-r.y, r.x)
-        if t.length_squared() == 0:
-            return
-        t.scale_to_length(self.SWING_THRUST * 1.5)  # a bit stronger kick at the start
-        self.owner.rect.centerx += int(t.x)
-        self.owner.rect.centery += int(t.y)
-
     def attach(self):
-        """Stick in place and stop moving; define rope length; slight up+forward assist."""
         self.state = "attached"
-        self.anchor = self.rect.center
+        self.anchor = self.rope_world_anchor()
         self.velocity.update(0, 0)
         self.attached_at_ms = pygame.time.get_ticks()
 
+        # establish rope length and initial swing angle from anchor to owner
         if self.owner:
-            # Set the rope length to current distance
-            owner_center = pygame.Vector2(self.owner.rect.center)
-            self.rope_len = (owner_center - pygame.Vector2(self.anchor)).length()
+            oc = pygame.Vector2(self.owner.rect.center)
+            an = pygame.Vector2(self.anchor)
+            v = oc - an
+            self.rope_len = max(40.0, v.length())
+            # angle measured from vertical down; y+ is down in pygame
+            # theta = atan2(horizontal, vertical down component)
+            self.theta = math.atan2(v.x, v.y if v.y != 0 else 1)
+            self.omega = 0.0
 
-            # Small upward nudge so player starts to rise a bit
-            if getattr(self.owner, "gravity", 0) > -10:
-                self.owner.gravity = -10
+            # launch impulse (past clinging point)
+            launch = v.normalize() * -20  # push toward/through anchor
+            self.owner.rect.centerx += int(launch.x)
+            self.owner.rect.centery += int(launch.y)
 
-            # Tangential kick to encourage swinging motion
-            self._give_tangential_kick()
+    def _can_detach(self) -> bool:
+        if self.attached_at_ms is None:
+            return False
+        return (pygame.time.get_ticks() - self.attached_at_ms) >= self.MIN_STICK_MS
 
-    # --- update -----------------------------------------------------------
+    def _detach(self):
+        self.state = "done"
+        self.kill()
 
     def update(self, platforms=None):
         now = pygame.time.get_ticks()
@@ -123,93 +95,74 @@ class Sling(pygame.sprite.Sprite):
             self.rect.x += self.velocity.x
             self.rect.y += self.velocity.y
 
+            # Attach to ceiling
+            if self.rect.top <= 0:
+                self.rect.top = 0
+                self.attach()
+                return
+
             # Attach to ground
             if self.rect.bottom >= GROUND_Y:
                 self.rect.bottom = GROUND_Y
                 self.attach()
                 return
 
-            # Attach to platforms
+            # Attach to platforms (top/stand area)
             if platforms:
                 hit = pygame.sprite.spritecollideany(self, platforms)
                 if hit:
-                    self.rect.bottom = hit.rect.top
+                    self.rect.bottom = hit.stand_rect.top
                     self.attach()
                     return
 
-            # Off screen → done
+            # off screen → cancel
             if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
-                self.state = "done"
-                self.kill()
-                return
+                self._detach()
 
         elif self.state == "attached":
-            # Auto-detach after stick window (unless already reeled and launched)
-            if self.attached_at_ms and now - self.attached_at_ms >= self.STICK_MS:
-                # still allow some extra safety cap
-                if now - self.attached_at_ms >= self.DETACH_AFTER_MS:
-                    self.state = "done"
-                    self.kill()
-                    return
+            # safety auto-detach
+            if self.attached_at_ms and now - self.attached_at_ms >= self.DETACH_SAFETY_MS:
+                self._detach()
+                return
 
-            if self.owner and self.anchor and self.rope_len is not None:
-                # Read jump press directly (reel-in trigger)
-                keys = pygame.key.get_pressed()
-                jump_key = self.owner.controls.get("jump")
-                jump_pressed = bool(jump_key is not None and keys[jump_key])
+            if self.owner and self.anchor and self.rope_len:
+                oc = pygame.Vector2(self.owner.rect.center)
+                an = pygame.Vector2(self.anchor)
+                v = oc - an
+                if v.length() == 0:
+                    v = pygame.Vector2(0.001, 0.001)
 
-                owner_center = pygame.Vector2(self.owner.rect.center)
-                to_anchor = pygame.Vector2(self.anchor) - owner_center
-                dist = to_anchor.length()
+                # Convert to polar around anchor: theta, omega
+                self.theta = math.atan2(v.x, v.y if v.y != 0 else 1)
 
-                if jump_pressed:
-                    # --- REEL-IN MODE ---
+                if self.pull_mode:
+                    # Pull straight towards anchor
+                    to_anchor = (an - oc)
+                    dist = to_anchor.length()
                     if dist <= self.break_dist:
-                        # Arrived: launch forward past the cling point
-                        if dist != 0:
-                            dir_to_anchor = to_anchor.normalize()
-                            overshoot_point = pygame.Vector2(self.anchor) + dir_to_anchor * self.OVERSHOOT_PX
-                            self.owner.rect.centerx = int(overshoot_point.x)
-                            self.owner.rect.centery  = int(overshoot_point.y)
-                        self.state = "done"
-                        self.kill()
+                        if self._can_detach() and self.release_requested:
+                            self._detach()
                         return
-
-                    # Distance-scaled pull
-                    step = min(self.MAX_PULL, max(self.MIN_PULL, dist * self.PULL_GAIN))
-                    to_anchor.scale_to_length(step)
-
-                    # Cancel gravity when moving upward so climb isn't damped
-                    if to_anchor.y < 0 and getattr(self.owner, "gravity", 0) > 0:
-                        self.owner.gravity = 0
-
+                    # Move owner strongly towards anchor
+                    to_anchor.scale_to_length(min(self.pull_speed, dist))
                     self.owner.rect.centerx += int(to_anchor.x)
-                    self.owner.rect.centery  += int(to_anchor.y)
-
-                    # Update rope length while reeling, so we don't snap back
-                    owner_center = pygame.Vector2(self.owner.rect.center)
-                    self.rope_len = (owner_center - pygame.Vector2(self.anchor)).length()
-
+                    self.owner.rect.centery += int(to_anchor.y)
                 else:
-                    # --- SLING / SWING MODE ---
-                    # Let hero gravity do its thing (already applied in Hero.update),
-                    # but enforce max rope length (pull back toward circle if stretched)
-                    r = pygame.Vector2(self.owner.rect.center) - pygame.Vector2(self.anchor)
-                    L = r.length()
-                    if L > self.rope_len:  # stretched, pull radially back
-                        if L != 0:
-                            correction = (L - self.rope_len) * self.ROPE_ENFORCE
-                            r_norm = r.normalize()
-                            self.owner.rect.centerx -= int(r_norm.x * correction)
-                            self.owner.rect.centery  -= int(r_norm.y * correction)
+                    # Pendulum swing: simple angular equation with pseudo-gravity
+                    g = 0.35
+                    self.omega += (g / self.rope_len) * math.sin(self.theta)
+                    self.omega *= 0.99  # small damping
+                    self.theta -= self.omega
 
-                    # Add a small tangential push to help maintain swinging
-                    if r.length_squared() != 0:
-                        tangent = pygame.Vector2(-r.y, r.x)
-                        if tangent.length_squared() != 0:
-                            tangent.scale_to_length(self.SWING_THRUST)
-                            self.owner.rect.centerx += int(tangent.x)
-                            self.owner.rect.centery  += int(tangent.y)
+                    # project back on circle
+                    new_rel = pygame.Vector2(math.sin(self.theta), math.cos(self.theta)) * self.rope_len
+                    new_pos = an + new_rel
+                    self.owner.rect.centerx = int(new_pos.x)
+                    self.owner.rect.centery = int(new_pos.y)
+
+                # Detach when allowed and requested (jump released)
+                if self.release_requested and self._can_detach():
+                    self._detach()
 
         elif self.state == "done":
             self.kill()

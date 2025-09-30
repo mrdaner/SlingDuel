@@ -1,78 +1,77 @@
 # sprites/hero.py
 import math
 import pygame
-from constants import SCREEN_WIDTH, GROUND_Y, HERO_JUMP_FORCE, GRAVITY_PER_TICK
+from constants import SCREEN_WIDTH, GROUND_Y, HERO_JUMP_FORCE, GRAVITY_PER_TICK, MAX_HEALTH
 from assets import get_hero_frames, get_banana_image
 from .banana import Banana
 from .sling import Sling
 
-
 class Hero(pygame.sprite.Sprite):
-    def __init__(self, controls: dict | None = None, start_x: int = 200):
+    def __init__(self, controls: dict | None = None, start_x: int = 200, name="Player", name_color=(255,255,255)):
         super().__init__()
 
         stand, self.hero_run, self.hero_jump, self.hero_throw = get_hero_frames()
         self.hero_stand = stand
 
-        # Default controls (can be overridden by main.py)
+        self.name = name
+        self.name_color = name_color
+
         default_controls = {
             "left":  pygame.K_a,
             "right": pygame.K_d,
             "up":    pygame.K_w,
             "down":  pygame.K_s,
             "throw": pygame.K_f,
-            "sling": pygame.K_r,     # default; p2 overrides to U in main
-            "jump":  pygame.K_c      # default; p2 overrides to N in main
+            "sling": pygame.K_r,
+            "jump":  pygame.K_c
         }
         self.controls = (controls or default_controls)
 
-        # Animation state
         self.hero_run_index = 0.0
         self.hero_jump_index = 0.0
         self.hero_throw_index = 0.0
         self.is_throwing = False
 
-        # Sprite / physics
         self.image = self.hero_stand
         self.rect = self.image.get_rect(midbottom=(start_x, GROUND_Y))
         self.gravity = 0
         self.speed = 0
         self.facing_right = True
 
-        # Health / inventory
-        self.max_health = 5
-        self.health = self.max_health
-        self.has_banana = False
+        self.max_health = MAX_HEALTH
+        self.health = float(self.max_health)
 
-        # Aim (circular)
-        self.aim_radius = 150
+        # aim — 30% closer
+        self.aim_radius = int(150 * 0.7)
         self.aim_angle = 0.0
         self.aim_step = 0.06
         self.aim_min = -1.25
         self.aim_max =  1.25
 
-        # Deferred banana throw
+        # inventory
+        self.has_banana = False
+
+        # throws
         self._pending_throw = False
         self._throw_velocity = pygame.Vector2()
 
-        # Hook (sling) – hold-to-keep + jump-release detach
-        self.hook_cooldown_ms = 5000
+        # hook (grapple)
+        self.hook_cooldown_ms = 1500  # 3x faster than 5s
         self.hook_ready_time = 0
         self.hook_active = False
         self.hook_sprite: Sling | None = None
-        self._hook_prev = False      # previous frame 'sling' pressed
-        self._jump_prev = False      # previous frame 'jump'  pressed
+        self._hook_prev = False  # previous-frame pressed state
+
+        # grounded state
+        self.on_platform = False
 
     # ------------------- input / movement / animation -------------------
     def hero_input(self, hooks_group: pygame.sprite.Group | None):
         keys = pygame.key.get_pressed()
 
-        # Jump (optional key)
+        # Jump allowed if on ground or platform
         jump_key = self.controls.get("jump")
-        jump_pressed = bool(jump_key is not None and keys[jump_key])
-
-        if jump_pressed and self.rect.bottom >= GROUND_Y:
-            # Normal jump only when on ground (platform landing handled in gravity)
+        if jump_key is not None and keys[jump_key] and (self.rect.bottom >= GROUND_Y or self.on_platform):
             self.gravity = HERO_JUMP_FORCE
 
         # Horizontal move + facing
@@ -99,50 +98,41 @@ class Hero(pygame.sprite.Sprite):
             dir_vec = pygame.Vector2(tx - self.rect.centerx, ty - self.rect.centery).normalize()
             self._throw_velocity = dir_vec * 12
             self._pending_throw = True
-            self.has_banana = False  # consume now so you can’t queue two
+            self.has_banana = False  # consume now
 
-        # Hook logic: hold to keep; **release on jump key release if attached**
+        # Hook logic: press to fire, min 2s stick; pull on jump; release on jump up
         if hooks_group is not None:
             now = pygame.time.get_ticks()
             hook_pressed = keys[self.controls["sling"]]
+            jump_pressed = (jump_key is not None) and keys[jump_key]
 
-            # Press edge: spawn if not active and off cooldown
+            # press edge → spawn if ready
             if hook_pressed and not self._hook_prev:
                 if (not self.hook_active) and (now >= self.hook_ready_time):
                     tx, ty = self.get_aim_pos()
                     dir_vec = pygame.Vector2(tx - self.rect.centerx, ty - self.rect.centery).normalize()
-                    velocity = dir_vec * 14
+                    velocity = dir_vec * (14 * 1.3)  # 30% longer throw
                     self.hook_sprite = Sling(self.rect.center, velocity, owner=self)
                     hooks_group.add(self.hook_sprite)
                     self.hook_active = True
 
-            # Release edge: if we release the hook key, despawn (classic hold-to-keep)
+            # release edge → (do nothing immediately; Sling enforces min 2s)
             if (not hook_pressed) and self._hook_prev:
                 if self.hook_active and self.hook_sprite:
-                    self.hook_sprite.kill()
-                    self.hook_sprite = None
-                self.hook_active = False
-                # start cooldown when we let go of the hook key
-                self.hook_ready_time = now + self.hook_cooldown_ms
+                    self.hook_sprite.request_release()  # tells hook key is up
 
-            # While attached: if player PRESSES jump, we “reel in” (Sling pulls owner already)
-            # If player RELEASES jump while attached → detach immediately.
-            if self.hook_active and self.hook_sprite and self.hook_sprite.state == "attached":
-                # If jump was pressed last frame but not this one → detach
-                if self._jump_prev and not jump_pressed:
-                    self.hook_sprite.state = "done"
-                    self.hook_sprite.kill()
-                    self.hook_sprite = None
-                    self.hook_active = False
-                    self.hook_ready_time = now + self.hook_cooldown_ms
+            # while held, if attached and jump is *released*, it will detach via hook logic
+            if self.hook_active and self.hook_sprite:
+                self.hook_sprite.set_pull(jump_pressed)
 
             self._hook_prev = hook_pressed
 
-        # Remember last jump state for release detection
-        self._jump_prev = jump_pressed
+    def apply_gravity(self, platforms=None):
+        self.on_platform = False
 
-    def apply_gravity(self, platforms: pygame.sprite.Group | None = None):
+        # basic gravity
         self.gravity += GRAVITY_PER_TICK
+        prev_bottom = self.rect.bottom
         self.rect.y += self.gravity
 
         # Ground collision
@@ -150,14 +140,16 @@ class Hero(pygame.sprite.Sprite):
             self.rect.bottom = GROUND_Y
             self.gravity = 0
 
-        # Platform collision (land only when falling; pass-through upward)
-        if platforms:
+        # Platform collision (falling from above only; bottom half is standable)
+        if platforms and self.gravity >= 0:
             hits = pygame.sprite.spritecollide(self, platforms, False)
             for plat in hits:
-                # Falling and intersecting from above
-                if self.gravity >= 0 and self.rect.bottom <= plat.rect.top + 20:
-                    self.rect.bottom = plat.rect.top
+                top = plat.stand_rect.top
+                # from above: previous bottom was above the top stand line
+                if prev_bottom <= top and self.rect.bottom >= top:
+                    self.rect.bottom = top
                     self.gravity = 0
+                    self.on_platform = True
 
     def move_horizontal(self):
         self.rect.x += self.speed
@@ -167,26 +159,27 @@ class Hero(pygame.sprite.Sprite):
             self.rect.right = SCREEN_WIDTH
 
     def animate(self):
-        # If standing on ground or on a platform (gravity==0), don’t show “jump” loop
-        on_floor_or_platform = (self.gravity == 0 and self.rect.bottom < GROUND_Y) or (self.rect.bottom == GROUND_Y)
-
-        if self.is_throwing:
-            self.hero_throw_index += 0.2
-            if self.hero_throw_index >= len(self.hero_throw):
-                self.hero_throw_index = 0.0
-                self.is_throwing = False
-                frame = self.hero_stand
+        # Standing if on ground or platform
+        if self.rect.bottom == GROUND_Y or self.on_platform:
+            if self.speed != 0:
+                self.hero_run_index = (self.hero_run_index + 0.4) % len(self.hero_run)
+                frame = self.hero_run[int(self.hero_run_index)]
             else:
-                frame = self.hero_throw[int(self.hero_throw_index)]
-        elif (not on_floor_or_platform) and (self.rect.bottom < GROUND_Y):
-            # Only show “jumping” while really airborne
-            self.hero_jump_index = (self.hero_jump_index + 0.1) % len(self.hero_jump)
-            frame = self.hero_jump[int(self.hero_jump_index)]
-        elif self.speed != 0:
-            self.hero_run_index = (self.hero_run_index + 0.4) % len(self.hero_run)
-            frame = self.hero_run[int(self.hero_run_index)]
+                frame = self.hero_stand
         else:
-            frame = self.hero_stand
+            # in air
+            if self.is_throwing:
+                # still show throw frames while mid-air if throwing
+                self.hero_throw_index += 0.2
+                if self.hero_throw_index >= len(self.hero_throw):
+                    self.hero_throw_index = 0.0
+                    self.is_throwing = False
+                    frame = self.hero_stand
+                else:
+                    frame = self.hero_throw[int(self.hero_throw_index)]
+            else:
+                self.hero_jump_index = (self.hero_jump_index + 0.1) % len(self.hero_jump)
+                frame = self.hero_jump[int(self.hero_jump_index)]
 
         self.image = frame if self.facing_right else pygame.transform.flip(frame, True, False)
 
@@ -200,7 +193,7 @@ class Hero(pygame.sprite.Sprite):
         return int(cx + dx), int(cy + dy)
 
     def reset(self):
-        self.rect.midbottom = (self.rect.centerx, GROUND_Y)
+        self.rect.bottom = GROUND_Y
         self.gravity = 0
         self.speed = 0
         self.hero_run_index = 0.0
@@ -211,36 +204,32 @@ class Hero(pygame.sprite.Sprite):
         self.facing_right = True
         self.aim_angle = 0.0
         self._pending_throw = False
-        self.health = self.max_health
+        self.health = float(self.max_health)
+        self.on_platform = False
 
         # hook state
         self.hook_ready_time = 0
         self.hook_active = False
         self.hook_sprite = None
         self._hook_prev = False
-        self._jump_prev = False
 
     def take_damage(self, amount: float = 1.0):
-        # Support half-heart logic smoothly
-        self.health = max(0.0, self.health - float(amount))
+        self.health = max(0.0, self.health - amount)
 
     @property
     def is_dead(self) -> bool:
-        return self.health <= 0
+        return self.health <= 0.0
 
-    def update(
-        self,
-        projectiles: pygame.sprite.Group | None = None,
-        hooks_group: pygame.sprite.Group | None = None,
-        **kwargs
-    ):
-        platforms: pygame.sprite.Group | None = kwargs.get("platforms")
+    def update(self,
+               projectiles: pygame.sprite.Group | None = None,
+               hooks_group: pygame.sprite.Group | None = None,
+               platforms: pygame.sprite.Group | None = None):
         self.hero_input(hooks_group)
-        self.apply_gravity(platforms=platforms)
+        self.apply_gravity(platforms)
         self.move_horizontal()
         self.animate()
 
-        # Perform pending banana throw here once
+        # spawn banana if requested
         if self._pending_throw and projectiles is not None:
             banana_img = get_banana_image()
             projectiles.add(Banana(self.rect.center, self._throw_velocity, banana_img, owner=self))

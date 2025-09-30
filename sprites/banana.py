@@ -9,9 +9,8 @@ from constants import (
 )
 from assets import get_banana_image, get_banana_splashed
 
-
 class BananaPickup(pygame.sprite.Sprite):
-    """A stationary banana that sits until a player picks it up."""
+    """A stationary banana that sits until picked up."""
     def __init__(self, x: int, y_bottom: int):
         super().__init__()
         img = get_banana_image()
@@ -26,9 +25,9 @@ class Banana(Throwable):
     """
     States:
       - 'flying'              : moving with gravity, rotating
-      - 'falling_after_hit'   : switched to splat image after hitting a player; falls to surface, 3s timer starts AFTER landing
-      - 'splatted_persist'    : landed without hitting player; lies there until stepped on (or culled by limits)
-      - 'splatted_temp'       : splatted (after hit or after stepped); disappears after 3s
+      - 'falling_after_hit'   : splat image falling to surface after direct hit
+      - 'splatted_persist'    : landed without direct hit; stays until stepped on
+      - 'splatted_temp'       : splatted (after hit or stepped); disappears after N ms
     """
 
     OWNER_IMMUNITY_MS = 150  # ignore collisions with owner for first 150ms
@@ -53,16 +52,17 @@ class Banana(Throwable):
         self.state = "flying"
         self.despawn_at_ms: int | None = None
         self.spawned_at_ms = pygame.time.get_ticks()
+        self.splat_time: int | None = None
 
         self._already_damaged_player = False
         self._stepped_once = False
 
-        # NEW: landing metadata for culling / rules
-        self.on_ground: bool | None = None       # True if landed on ground, False if on platform, None if not yet
-        self.landed_at_ms: int | None = None     # when it became splatted_persist
+        self._prev_bottom = self.rect.bottom
 
     def can_hit(self, target) -> bool:
-        # no damage more than once per throw
+        # Only while flying; never after splatted
+        if self.state != "flying":
+            return False
         if self._already_damaged_player:
             return False
         if target is self.owner:
@@ -80,81 +80,70 @@ class Banana(Throwable):
         self.velocity.y = min(self.velocity.y + PROJECTILE_GRAVITY, MAX_PROJECTILE_FALL_SPEED)
 
     def _land_on_surface(self, platforms):
-        """Snap to ground or platform if intersecting, return ('ground'|'platform'|None)."""
-        # Ground check
-        if self.rect.bottom >= GROUND_Y:
+        """Snap to ground or platform if intersecting from above; return True if landed."""
+        # ground check
+        if self._prev_bottom <= GROUND_Y and self.rect.bottom >= GROUND_Y and self.velocity.y >= 0:
             self.rect.bottom = GROUND_Y
-            return "ground"
+            return True
 
-        # Platform check
+        # platforms: only from above onto stand_rect
         if platforms:
-            hit = pygame.sprite.spritecollideany(self, platforms)
-            if hit:
-                # place banana on top of platform
-                self.rect.bottom = hit.rect.top
-                return "platform"
-
-        return None
+            for plat in platforms:
+                top = plat.stand_rect.top
+                if self._prev_bottom <= top and self.rect.bottom >= top and self.velocity.y >= 0:
+                    # x overlap too
+                    if self.rect.right >= plat.stand_rect.left and self.rect.left <= plat.stand_rect.right:
+                        self.rect.bottom = top
+                        return True
+        return False
 
     def _to_splat(self):
         center = self.rect.center
         self.image = self.splat_image
         self.rect = self.image.get_rect(center=center)
         self.velocity.update(0, 0)
+        self.splat_time = pygame.time.get_ticks()
 
     def on_hit(self, target):
-        """Direct hit on a player: deal 1 dmg once, switch to splat image, fall to a surface, then disappear after 3s."""
-        if self._already_damaged_player:
+        """Direct hit on a player: 1.0 dmg once, switch to splat image, fall to surface, then disappear after 0.5s."""
+        if self._already_damaged_player or self.state != "flying":
             return
         self._already_damaged_player = True
-        # change to splat immediately
-        self._to_splat()
-        # start falling until surface; timer starts after landing
-        self.state = "falling_after_hit"
-
         if hasattr(target, "take_damage"):
             target.take_damage(self.damage_direct)
+        self._to_splat()
+        self.state = "falling_after_hit"
 
     def update(self, platforms=None):
+        self._prev_bottom = self.rect.bottom
+
         if self.state == "flying":
             self._apply_gravity()
             self.rect.x += self.velocity.x
             self.rect.y += self.velocity.y
             self._animate_rotation()
 
-            where = self._land_on_surface(platforms)
-            if where is not None:
-                # landed without hitting a player -> persistent splat
+            if self._land_on_surface(platforms):
                 self._to_splat()
                 self.state = "splatted_persist"
-                self.on_ground = (where == "ground")
-                self.landed_at_ms = pygame.time.get_ticks()
                 return
 
-            # walls -> persist where it hits
             if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
                 self._to_splat()
                 self.state = "splatted_persist"
-                # consider wall as not ground (won't count against ground cap)
-                self.on_ground = False
-                self.landed_at_ms = pygame.time.get_ticks()
                 return
 
         elif self.state == "falling_after_hit":
-            # already splat image; just fall to surface
             self._apply_gravity()
             self.rect.x += self.velocity.x
             self.rect.y += self.velocity.y
-            where = self._land_on_surface(platforms)
-            if where is not None:
+            if self._land_on_surface(platforms):
                 self.velocity.update(0, 0)
                 self.state = "splatted_temp"
-                self.on_ground = (where == "ground")
-                self.landed_at_ms = pygame.time.get_ticks()
-                self.despawn_at_ms = self.landed_at_ms + 3000  # 3s after landing
+                self.despawn_at_ms = pygame.time.get_ticks() + 500  # 0.5s after landing
 
         elif self.state == "splatted_persist":
-            # Wait until stepped or culled by main; no timer here
+            # waits until stepped_on_by; nothing here
             pass
 
         elif self.state == "splatted_temp":
@@ -162,7 +151,7 @@ class Banana(Throwable):
             if self.despawn_at_ms is not None and now >= self.despawn_at_ms:
                 self.kill()
 
-    # Helper to process "stepped on" from main loop (so we can pass players easily)
+    # API from main loop
     def stepped_on_by(self, player):
         if self.state != "splatted_persist":
             return
@@ -172,5 +161,4 @@ class Banana(Throwable):
         if hasattr(player, "take_damage"):
             player.take_damage(self.damage_step)
         self.state = "splatted_temp"
-        self.landed_at_ms = pygame.time.get_ticks()
-        self.despawn_at_ms = self.landed_at_ms + 3000
+        self.despawn_at_ms = pygame.time.get_ticks() + 3000  # 3s
