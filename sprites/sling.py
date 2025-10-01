@@ -235,9 +235,10 @@ class Sling(pygame.sprite.Sprite):
 
         center_vec = None
         if target_center is not None and not snapped:
-            center_vec = pygame.Vector2(target_center)
             self.owner.rect.centerx = int(target_center.x)
             self.owner.rect.centery = int(target_center.y)
+            self.owner.clamp_vertical_bounds()
+            center_vec = pygame.Vector2(self.owner.rect.center)
 
         new_center = pygame.Vector2(self.owner.rect.center)
         if not snapped:
@@ -275,6 +276,7 @@ class Sling(pygame.sprite.Sprite):
             hero.rect.centerx = int(anchor_vec.x)
             hero.rect.bottom = int(anchor_vec.y)
             hero.on_platform = True
+        hero.clamp_vertical_bounds()
         self.motion_mode = "snapped"
         new_center = pygame.Vector2(hero.rect.center)
         self.rope_len = max(1.0, (new_center - anchor_vec).length())

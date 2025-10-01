@@ -1,9 +1,12 @@
 """Hero sprite logic: player movement, combat, and grappling hook control."""
 import math
+from typing import TYPE_CHECKING
+
 import pygame
 from constants import (
     SCREEN_WIDTH,
     GROUND_Y,
+    CEILING_Y,
     HERO_JUMP_FORCE,
     GRAVITY_PER_TICK,
     MAX_HEALTH,
@@ -14,6 +17,9 @@ from constants import (
 from assets import get_hero_frames, get_banana_image
 from .banana import Banana
 from .sling import Sling
+
+if TYPE_CHECKING:
+    from game.world import GameWorld
 
 class Hero(pygame.sprite.Sprite):
     def __init__(self, controls: dict | None = None, start_x: int = 200,
@@ -41,6 +47,8 @@ class Hero(pygame.sprite.Sprite):
         self.hero_jump_index = 0.0
         self.hero_throw_index = 0.0
         self.is_throwing = False
+        self.world: "GameWorld" | None = None
+        self.last_input_at = 0
 
         self.image = self.hero_stand
         self.rect = self.image.get_rect(midbottom=(start_x, GROUND_Y))
@@ -51,6 +59,8 @@ class Hero(pygame.sprite.Sprite):
 
         self.max_health = MAX_HEALTH
         self.health = float(self.max_health)
+        self.missed_banana_streak = 0
+        self.has_landed_direct_banana_hit = False
 
         # Aim reticle rotates around the hero; shrink radius to keep targets readable.
         self.aim_radius = int(150 * 0.7)
@@ -67,6 +77,7 @@ class Hero(pygame.sprite.Sprite):
         self._pending_throw = False
         self._throw_velocity = pygame.Vector2()
         self._banana_refill_time = 0
+        self._throw_prev = False
 
         # Grapple timing; fast recovery keeps test mode iterations tight.
         self.hook_cooldown_ms = 500
@@ -80,7 +91,7 @@ class Hero(pygame.sprite.Sprite):
         self._hook_momentum_remainder = 0.0
 
         # Shrink banana hit detection so glancing contacts do not register.
-        self._banana_hitbox_shrink = pygame.Vector2(16, 12)
+        self._banana_hitbox_shrink = pygame.Vector2(20, 12)
 
         # Track when platform friction should zero vertical speed.
         self.on_platform = False
@@ -89,6 +100,9 @@ class Hero(pygame.sprite.Sprite):
     def hero_input(self, hooks_group: pygame.sprite.Group | None):
         keys = pygame.key.get_pressed()
         now = pygame.time.get_ticks()
+
+        if any(keys[key] for key in self.controls.values() if key is not None):
+            self.last_input_at = now
 
         if self.infinite_bananas and not self.has_banana and now >= self._banana_refill_time:
             self.has_banana = True
@@ -119,7 +133,14 @@ class Hero(pygame.sprite.Sprite):
             self.aim_angle = max(self.aim_min, self.aim_angle - self.aim_step)
 
         # Throw only if the hero is currently carrying a banana (or in infinite test mode).
-        if keys[self.controls["throw"]] and self.has_banana and not self._pending_throw:
+        throw_key = self.controls.get("throw")
+        throw_pressed = bool(throw_key is not None and keys[throw_key])
+        if (
+            throw_pressed
+            and not self._throw_prev
+            and self.has_banana
+            and not self._pending_throw
+        ):
             dir_vec = self._aim_direction()
             self._start_throw_animation()
             self._throw_velocity = dir_vec * BANANA_THROW_SPEED
@@ -127,6 +148,7 @@ class Hero(pygame.sprite.Sprite):
             self.has_banana = False  # consume now
             if self.infinite_bananas:
                 self._banana_refill_time = now + 1000
+        self._throw_prev = throw_pressed
 
         # Hook dispatch and rope control share logic between normal and test modes.
         if hooks_group is not None:
@@ -162,6 +184,11 @@ class Hero(pygame.sprite.Sprite):
         self.gravity += GRAVITY_PER_TICK
         prev_bottom = self.rect.bottom
         self.rect.y += self.gravity
+
+        if self.rect.top < CEILING_Y:
+            self.rect.top = CEILING_Y
+            if self.gravity < 0:
+                self.gravity = 0
 
         # Ground collision
         if self.rect.bottom >= GROUND_Y:
@@ -203,6 +230,12 @@ class Hero(pygame.sprite.Sprite):
             self.rect.right = SCREEN_WIDTH
             self._hook_momentum_x = 0.0
             self._hook_momentum_remainder = 0.0
+
+    def clamp_vertical_bounds(self) -> None:
+        if self.rect.top < CEILING_Y:
+            self.rect.top = CEILING_Y
+            if self.gravity < 0:
+                self.gravity = 0
 
     def animate(self):
         frame = self.hero_stand
@@ -293,6 +326,10 @@ class Hero(pygame.sprite.Sprite):
         self.on_platform = False
         self.has_banana = self.infinite_bananas
         self._banana_refill_time = 0
+        self.missed_banana_streak = 0
+        self.has_landed_direct_banana_hit = False
+        self.last_input_at = 0
+        self._throw_prev = False
 
         # hook state
         self.hook_ready_time = 0
@@ -304,6 +341,16 @@ class Hero(pygame.sprite.Sprite):
 
     def take_damage(self, amount: float = 1.0):
         self.health = max(0.0, self.health - amount)
+
+    def register_banana_miss(self) -> None:
+        if self.world is not None:
+            self.world.handle_banana_miss(self)
+            return
+        self.missed_banana_streak = min(self.missed_banana_streak + 1, 5)
+
+    def register_banana_hit(self) -> None:
+        self.missed_banana_streak = 0
+        self.has_landed_direct_banana_hit = True
 
     @property
     def is_dead(self) -> bool:

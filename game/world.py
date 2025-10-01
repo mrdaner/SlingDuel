@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterator, Tuple
+from typing import Callable, Iterator, Tuple
 
 import pygame
 
@@ -29,6 +29,8 @@ class Players:
 class GameWorld:
     """Owns sprite groups, player references, and round lifecycle helpers."""
 
+    _SELF_HIT_ACTIVITY_WINDOW_MS = 15000
+
     def __init__(self, *, test_mode: bool = False) -> None:
         self.players = Players(*self._create_players())
         self.player_group = pygame.sprite.Group(*self.players.as_tuple())
@@ -47,7 +49,11 @@ class GameWorld:
             players=self.players,
         )
 
+        for hero in self.players:
+            hero.world = self
+
         self._apply_test_mode_to_players()
+        self.on_self_banana_hit: Callable[[Hero], None] | None = None
 
     @property
     def player1(self) -> Hero:
@@ -143,6 +149,20 @@ class GameWorld:
                     continue
                 if projectile.rect.colliderect(player.banana_hitbox()):
                     projectile.on_hit(player)
+                    if isinstance(projectile, Banana):
+                        owner = getattr(projectile, "owner", None)
+                        if owner is player:
+                            if not self.test_mode:
+                                if self.handle_banana_miss(owner):
+                                    if (
+                                        owner.missed_banana_streak >= 5
+                                        and not getattr(owner, "has_landed_direct_banana_hit", False)
+                                        and self.on_self_banana_hit
+                                    ):
+                                        self.on_self_banana_hit(player)
+                        elif isinstance(owner, Hero):
+                            if not self.test_mode:
+                                owner.register_banana_hit()
                     break
 
     def _handle_splats(self) -> None:
@@ -185,6 +205,24 @@ class GameWorld:
             hero._banana_refill_time = 0
             if self.test_mode and not hero.has_banana:
                 hero.has_banana = True
+
+    # ------------------------------------------------------------------
+    # Miss tracking helpers
+    # ------------------------------------------------------------------
+    def handle_banana_miss(self, owner: Hero) -> bool:
+        """Update miss streak for a hero and return True when the opponent is active."""
+        other = self.player2 if owner is self.player1 else self.player1
+        last_input = getattr(other, "last_input_at", 0)
+        other_active = bool(last_input) and (
+            pygame.time.get_ticks() - last_input <= self._SELF_HIT_ACTIVITY_WINDOW_MS
+        )
+
+        if other_active:
+            owner.missed_banana_streak = min(owner.missed_banana_streak + 1, 5)
+            return True
+
+        owner.missed_banana_streak = 0
+        return False
 
 
 

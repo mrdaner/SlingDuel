@@ -56,6 +56,7 @@ class Banana(Throwable):
 
         self._already_damaged_player = False
         self._stepped_once = False
+        self._notified_result = False
 
         self._prev_bottom = self.rect.bottom
 
@@ -113,6 +114,7 @@ class Banana(Throwable):
             target.take_damage(self.damage_direct)
         self._to_splat()
         self.state = "falling_after_hit"
+        self._notified_result = True
 
     def update(self, platforms=None):
         self._prev_bottom = self.rect.bottom
@@ -126,11 +128,13 @@ class Banana(Throwable):
             if self._land_on_surface(platforms):
                 self._to_splat()
                 self.state = "splatted_persist"
+                self._notify_owner_miss()
                 return
 
             if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
                 self._to_splat()
                 self.state = "splatted_persist"
+                self._notify_owner_miss()
                 return
 
         elif self.state == "falling_after_hit":
@@ -150,6 +154,14 @@ class Banana(Throwable):
             now = pygame.time.get_ticks()
             if self.despawn_at_ms is not None and now >= self.despawn_at_ms:
                 self.kill()
+
+    def _notify_owner_miss(self) -> None:
+        if self._notified_result:
+            return
+        self._notified_result = True
+        owner = getattr(self, "owner", None)
+        if owner and hasattr(owner, "register_banana_miss"):
+            owner.register_banana_miss()
 
     # API from main loop
     def stepped_on_by(self, player):

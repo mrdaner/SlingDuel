@@ -4,17 +4,17 @@
     "right": "d",
     "up": "w",
     "down": "s",
-    "throw": "b",
-    "sling": "h",
+    "throw": "left shift",
+    "sling": "v",
     "jump": "space"
   },
   "player2": {
-    "left": "k",
-    "right": ";",
-    "up": "o",
-    "down": "l",
-    "throw": "right shift",
+    "left": "l",
+    "right": "'",
+    "up": "p",
+    "down": ";",
+    "throw": "k",
     "sling": "return",
-    "jump": "right alt"
+    "jump": "right shift"
   }
 }

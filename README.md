@@ -21,13 +21,13 @@ Press **ESC** to pause, **K** to remap controls, **T** to toggle test overlays.
 
 | Action        | Player 1 (Left) | Player 2 (Right) |
 |---------------|-----------------|------------------|
-| Move Left     | A               | J                |
-| Move Right    | D               | L                |
-| Aim Up        | W               | I                |
-| Aim Down      | S               | K                |
+| Move Left     | A               | L                |
+| Move Right    | D               | ' (Apostrophe)   |
+| Aim Up        | W               | P                |
+| Aim Down      | S               | ;                |
 | Jump          | Space           | Right Shift      |
-| Hook / Sling  | Left Shift      | Enter            |
-| Throw Banana  | F               | H                |
+| Hook / Sling  | V               | Enter / Return   |
+| Throw Banana  | Left Shift      | K                |
 
 > Press **K** on the start screen or pause menu to remap any binding in-game.
 
@@ -49,7 +49,7 @@ Press **ESC** to pause, **K** to remap controls, **T** to toggle test overlays.
 ### Pause & Test Mode
 
 - **ESC** pauses the match: resume (ESC), return to menu (M), open remap screen (K), or toggle test mode (T).
-- Test mode grants infinite bananas to both players and overlays debug hitboxes plus banana/hook trajectory previews for sandbox testing.
+- Test mode grants infinite bananas to both players and overlays hitboxes plus banana/hook trajectory previews for sandbox testing.
 
 
 ## License

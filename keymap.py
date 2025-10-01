@@ -4,8 +4,24 @@ import os
 import pygame
 
 DEFAULT_KEY_NAMES = {
-    "player1": {"left":"a","right":"d","up":"w","down":"s","throw":"f","sling":"left shift","jump":"space"},
-    "player2": {"left":"j","right":"l","up":"i","down":"k","throw":"h","sling":"return","jump":"right shift"},
+    "player1": {
+        "left": "a",
+        "right": "d",
+        "up": "w",
+        "down": "s",
+        "throw": "left shift",
+        "sling": "v",
+        "jump": "space",
+    },
+    "player2": {
+        "left": "l",
+        "right": "'",
+        "up": "p",
+        "down": ";",
+        "throw": "k",
+        "sling": "return",
+        "jump": "right shift",
+    },
 }
 _KEYFILE = "keys.json"
 

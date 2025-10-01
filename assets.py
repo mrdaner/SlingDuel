@@ -24,6 +24,8 @@ def get_background():
     ground = load_image(_ASSET_ROOT / "Background" / "Ground.png")
     return sky, ground
 
+
+
 def _scale(surf: pygame.Surface) -> pygame.Surface:
     if SCALE == 1:
         return surf

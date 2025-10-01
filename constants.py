@@ -2,6 +2,7 @@
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 GROUND_Y = 680
+CEILING_Y = -60  # small headroom above visible top before clamping hero
 FPS = 60
 
 COLOR_BG = (94, 129, 162)
