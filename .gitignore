@@ -27,3 +27,4 @@ dist/
 # Ignore Misc folder except .gitkeep
 Misc/*
 !Misc/.gitkeep
+graphics/Misc/

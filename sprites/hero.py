@@ -1,7 +1,16 @@
 """Hero sprite logic: player movement, combat, and grappling hook control."""
 import math
 import pygame
-from constants import SCREEN_WIDTH, GROUND_Y, HERO_JUMP_FORCE, GRAVITY_PER_TICK, MAX_HEALTH
+from constants import (
+    SCREEN_WIDTH,
+    GROUND_Y,
+    HERO_JUMP_FORCE,
+    GRAVITY_PER_TICK,
+    MAX_HEALTH,
+    BANANA_THROW_SPEED,
+    HOOK_THROW_BASE_SPEED,
+    HOOK_THROW_SPEED_MULTIPLIER,
+)
 from assets import get_hero_frames, get_banana_image
 from .banana import Banana
 from .sling import Sling
@@ -113,7 +122,7 @@ class Hero(pygame.sprite.Sprite):
         if keys[self.controls["throw"]] and self.has_banana and not self._pending_throw:
             dir_vec = self._aim_direction()
             self._start_throw_animation()
-            self._throw_velocity = dir_vec * 12
+            self._throw_velocity = dir_vec * BANANA_THROW_SPEED
             self._pending_throw = True
             self.has_banana = False  # consume now
             if self.infinite_bananas:
@@ -128,7 +137,7 @@ class Hero(pygame.sprite.Sprite):
             if hook_pressed and not self._hook_prev:
                 if (not self.hook_active) and (now >= self.hook_ready_time):
                     dir_vec = self._aim_direction()
-                    velocity = dir_vec * (14 * 1.3)  # hook starts faster than bananas
+                    velocity = dir_vec * (HOOK_THROW_BASE_SPEED * HOOK_THROW_SPEED_MULTIPLIER)  # hook starts faster than bananas
                     self.hook_sprite = Sling(self.rect.center, velocity, owner=self)
                     hooks_group.add(self.hook_sprite)
                     self._start_throw_animation()

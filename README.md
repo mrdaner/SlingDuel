@@ -2,6 +2,8 @@
 
 Local 1v1 arcade shooter built with **pygame**. Two players jump, swing, and pelt each other with bananas across floating platforms. First to reduce the other to 0 HP wins.
 
+- **New:** in-game key remapping (`K`) and a test mode toggle (`T`), plus trajectory/sandbox overlays and a pause menu.
+
 ## Quick Start
 ```bash
 python3 -m venv venv
@@ -10,48 +12,44 @@ pip install -r requirements.txt
 python3 main.py
 ```
 
+Press **ESC** to pause, **K** to remap controls, **T** to toggle test overlays.
+
 
 ## How to Play
 
-Move / Aim
-Each player has their own keys for left/right (move) and up/down (aim). The white target shows the throw direction.
+### Default Controls
 
-Jump
-Low jump to hop between platforms.
+| Action        | Player 1 (Left) | Player 2 (Right) |
+|---------------|-----------------|------------------|
+| Move Left     | A               | J                |
+| Move Right    | D               | L                |
+| Aim Up        | W               | I                |
+| Aim Down      | S               | K                |
+| Jump          | Space           | Right Shift      |
+| Hook / Sling  | Left Shift      | Enter            |
+| Throw Banana  | F               | H                |
 
-Throw Banana
-You must first pick up a banana (yellow icon near your hearts = you have one).
+> Press **K** on the start screen or pause menu to remap any binding in-game.
 
-Direct hit: 1.0 damage.
+### Movement & Combat
 
-Step on splat: 0.5 damage (one time per splat).
+- **Move / Aim:** Left/right moves, up/down rotates the aim reticle (white dot).
+- **Jump:** Low arc for hopping platforms.
+- **Throw Banana:** Grab a banana first (icon near hearts). Direct hits deal **1.0 HP**, splats deal **0.5 HP** once.
+- **Grapple Hook:** Fire upward or to a surface. Hold jump to reel in, release to swing. Let go of hook to detach—hook and test-mode trajectories are shown as dotted arcs when available.
 
-Hook / Sling
-Fire a hook that sticks to platforms/ceiling.
+### HUD & Spawns
 
-While attached, holding jump pulls you strongly toward the hook.
+- Hearts show health (half-heart = 0.5 HP). Both players regenerate **+0.5 HP** every 30 seconds up to max.
+- Banana icon lights up when you have ammo.
+- Hook icon appears when the grapple is off cooldown.
+- Bananas spawn up to **3** at a time. Ground bananas unlock only after several platform spawns to keep play vertical.
+- Health pickups spawn on upper platforms only when someone is **≤3 HP**.
 
-If you don’t hold jump, it acts like a swing (Tarzan-style).
+### Pause & Test Mode
 
-Releasing jump while attached detaches the hook.
-
-HUD
-
-Hearts show current health. Half-heart appears for .5 HP.
-
-Banana icon appears if you carry one.
-
-Hook icon appears when hook is off cooldown.
-
-Spawning & Rules
-
-Bananas spawn periodically (with logic to avoid overlaps).
-
-Only one ground banana pickup at a time; others spawn on platforms.
-
-Ground splats are limited; oldest gets removed if over the cap.
-
-Health regen: +0.5 HP to each player every 30 seconds (clamped to max).
+- **ESC** pauses the match: resume (ESC), return to menu (M), open remap screen (K), or toggle test mode (T).
+- Test mode grants infinite bananas to both players and overlays debug hitboxes plus banana/hook trajectory previews for sandbox testing.
 
 
 ## License

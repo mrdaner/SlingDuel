@@ -1,6 +1,8 @@
 """High level orchestration of the SlingDuel gameplay loop and UI states."""
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pygame
 
 from constants import FPS, SCREEN_HEIGHT, SCREEN_WIDTH
@@ -9,6 +11,21 @@ from keymap import save_controls, default_controls
 from .resources import GameResources
 from .view import GameSceneRenderer
 from .world import GameWorld
+
+
+@dataclass(frozen=True)
+class KeymapEntry:
+    """Lightweight view-model describing a single action binding."""
+
+    player_label: str
+    action_label: str
+    action_key: str
+    hero: Hero
+
+    @property
+    def key_name(self) -> str:
+        keycode = self.hero.controls.get(self.action_key)
+        return pygame.key.name(keycode) if keycode is not None else "—"
 
 
 class Game:
@@ -202,8 +219,8 @@ class Game:
             return
         index = max(0, min(index, len(entries) - 1))
         entry = entries[index]
-        hero = entry["hero"]
-        action = entry["action_key"]
+        hero = entry.hero
+        action = entry.action_key
         hero.controls[action] = new_key
         save_controls(self.world.players.first.controls, self.world.players.second.controls)
 
@@ -215,23 +232,22 @@ class Game:
         self._keymap_selection = 0
         self._keymap_waiting = False
 
-    def _keymap_entries(self) -> list[dict]:
-        entries: list[dict] = []
+    def _keymap_entries(self) -> list[KeymapEntry]:
+        entries: list[KeymapEntry] = []
         players = [
             ("Player 1", self.world.players.first),
             ("Player 2", self.world.players.second),
         ]
         for label, hero in players:
             for action in self._keymap_actions:
-                keycode = hero.controls.get(action)
-                key_name = pygame.key.name(keycode) if keycode is not None else "—"
-                entries.append({
-                    "player": label,
-                    "action_label": self._keymap_labels.get(action, action.title()),
-                    "action_key": action,
-                    "key_name": key_name,
-                    "hero": hero,
-                })
+                entries.append(
+                    KeymapEntry(
+                        player_label=label,
+                        action_label=self._keymap_labels.get(action, action.title()),
+                        action_key=action,
+                        hero=hero,
+                    )
+                )
         return entries
 
 

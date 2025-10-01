@@ -91,6 +91,11 @@ class GameWorld:
         self.players.first.controls = p1_controls
         self.players.second.controls = p2_controls
 
+    @property
+    def is_test_mode(self) -> bool:
+        """Expose whether test-mode visuals should be enabled."""
+        return self.test_mode
+
     def set_test_mode(self, enabled: bool) -> None:
         if self.test_mode == bool(enabled):
             return

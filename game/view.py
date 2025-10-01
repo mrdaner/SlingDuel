@@ -1,21 +1,36 @@
 """Rendering helpers for SlingDuel game scenes (HUD, sprites, debug overlays)."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pygame
 
 from constants import (
     COLOR_BG,
+    COLOR_TITLE,
+    COLOR_ACCENT,
+    COLOR_MUTED,
+    COLOR_CALLOUT,
+    COLOR_WARNING,
+    OVERLAY_RGBA,
     MAX_HEALTH,
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
     GROUND_Y,
     PROJECTILE_GRAVITY,
     MAX_PROJECTILE_FALL_SPEED,
+    BANANA_THROW_SPEED,
+    HOOK_THROW_BASE_SPEED,
+    HOOK_THROW_SPEED_MULTIPLIER,
 )
 from sprites.hero import Hero
 
 from .resources import GameResources
+from .trajectory import simulate_trajectory
 from .world import GameWorld
+
+if TYPE_CHECKING:
+    from .game import KeymapEntry
 
 
 class GameSceneRenderer:
@@ -25,11 +40,13 @@ class GameSceneRenderer:
         self.screen = screen
         self.resources = resources
 
-        self._title_color = (248, 226, 92)   # ripe banana flesh
-        self._accent_color = (156, 102, 31)  # banana stem brown
-        self._muted_color = (246, 236, 200)  # soft highlight
-        self._callout_color = (214, 143, 46)  # amber callouts
-        self._warning_color = (207, 61, 33)   # test mode warning
+        self._title_color = COLOR_TITLE
+        self._accent_color = COLOR_ACCENT
+        self._muted_color = COLOR_MUTED
+        self._callout_color = COLOR_CALLOUT
+        self._warning_color = COLOR_WARNING
+        self._overlay_surface = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+        self._overlay_surface.fill(OVERLAY_RGBA)
         self._title_surf = resources.game_font.render("Slingduel", False, self._title_color)
         self._title_rect = self._title_surf.get_rect(center=(SCREEN_WIDTH // 2, 130))
         self._prompt_center = (SCREEN_WIDTH // 2, 320)
@@ -40,6 +57,7 @@ class GameSceneRenderer:
     # ------------------------------------------------------------------
     def draw_start_screen(self, winner: Hero | None = None, draw: bool = False, *, test_mode: bool = False) -> None:
         self.screen.fill(COLOR_BG)
+        self.screen.blit(self._overlay_surface, (0, 0))
         self.screen.blit(self._title_surf, self._title_rect)
 
         prompt_text = "Press SPACE to START"
@@ -103,9 +121,7 @@ class GameSceneRenderer:
         self._draw_debug_boxes(world)
 
     def draw_pause_overlay(self, *, test_mode: bool) -> None:
-        overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
-        self.screen.blit(overlay, (0, 0))
+        self.screen.blit(self._overlay_surface, (0, 0))
 
         title = self.resources.game_font.render("Paused", False, self._title_color)
         title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80))
@@ -124,7 +140,7 @@ class GameSceneRenderer:
             rect = surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + idx * 40))
             self.screen.blit(surf, rect)
 
-    def draw_keymap_menu(self, entries: list[dict], selected_index: int, awaiting: bool, *, test_mode: bool) -> None:
+    def draw_keymap_menu(self, entries: list[KeymapEntry], selected_index: int, awaiting: bool, *, test_mode: bool) -> None:
         self.screen.fill(COLOR_BG)
 
         title = self.resources.game_font.render("Remap Controls", False, self._title_color)
@@ -139,7 +155,7 @@ class GameSceneRenderer:
 
         if awaiting and 0 <= selected_index < len(entries):
             entry = entries[selected_index]
-            waiting_text = f"Press new key for {entry['player']} - {entry['action_label']}"
+            waiting_text = f"Press new key for {entry.player_label} - {entry.action_label}"
             waiting_surf = self.resources.name_font.render(waiting_text, False, self._callout_color)
             waiting_rect = waiting_surf.get_rect(center=(SCREEN_WIDTH // 2, info_rect.bottom + 40))
             self.screen.blit(waiting_surf, waiting_rect)
@@ -155,8 +171,8 @@ class GameSceneRenderer:
             if idx == selected_index:
                 color = self._accent_color if not awaiting else self._callout_color
                 pygame.draw.rect(self.screen, color, row_rect, border_radius=6)
-            label = f"{entry['player']} — {entry['action_label']}"
-            key_label = entry['key_name'].upper()
+            label = f"{entry.player_label} — {entry.action_label}"
+            key_label = entry.key_name.upper()
             label_surf = self.resources.name_font.render(label, False, (252, 244, 205))
             key_surf = self.resources.name_font.render(key_label, False, (252, 244, 205))
             label_pos = label_surf.get_rect(midleft=(box_margin_x, row_y))
@@ -251,8 +267,7 @@ class GameSceneRenderer:
         pygame.draw.line(self.screen, color, start, end, width)
 
     def _draw_debug_boxes(self, world: GameWorld) -> None:
-        test_mode = any(getattr(player, "infinite_bananas", False) for player in world.players)
-        if not test_mode:
+        if not world.is_test_mode:
             return
 
         red = (220, 40, 40)
@@ -270,57 +285,38 @@ class GameSceneRenderer:
             pygame.draw.rect(self.screen, red, hook.rect, 2)
 
     def _draw_trajectories(self, world: GameWorld) -> None:
-        if not any(getattr(player, "infinite_bananas", False) for player in world.players):
+        if not world.is_test_mode:
             return
 
         for player in world.players:
             start = pygame.Vector2(player.rect.center)
             aim_dir = player._aim_direction()
 
-            banana_velocity = aim_dir * 12
-            banana_path = self._simulate_trajectory(
+            banana_velocity = aim_dir * BANANA_THROW_SPEED
+            banana_path = simulate_trajectory(
                 start,
                 banana_velocity,
                 gravity=PROJECTILE_GRAVITY,
-                max_fall=MAX_PROJECTILE_FALL_SPEED,
                 gravity_scale=1.0,
+                max_fall=MAX_PROJECTILE_FALL_SPEED,
+                steps=90,
+                ground_y=GROUND_Y,
+                screen_width=SCREEN_WIDTH,
             )
             self._plot_path(banana_path, color=(250, 220, 90))
 
-            hook_velocity = aim_dir * (14 * 1.3 * 1.5)
-            hook_path = self._simulate_trajectory(
+            hook_velocity = aim_dir * (HOOK_THROW_BASE_SPEED * HOOK_THROW_SPEED_MULTIPLIER)
+            hook_path = simulate_trajectory(
                 start,
                 hook_velocity,
                 gravity=PROJECTILE_GRAVITY,
-                max_fall=MAX_PROJECTILE_FALL_SPEED,
                 gravity_scale=0.5,
+                max_fall=MAX_PROJECTILE_FALL_SPEED,
+                steps=90,
+                ground_y=GROUND_Y,
+                screen_width=SCREEN_WIDTH,
             )
             self._plot_path(hook_path, color=(180, 230, 255))
-
-    def _simulate_trajectory(
-        self,
-        start: pygame.Vector2,
-        velocity: pygame.Vector2,
-        *,
-        gravity: float,
-        gravity_scale: float,
-        max_fall: float | None,
-        steps: int = 90,
-    ) -> list[tuple[int, int]]:
-        pos = pygame.Vector2(start)
-        vel = pygame.Vector2(velocity)
-        points: list[tuple[int, int]] = []
-
-        for _ in range(steps):
-            pos += vel
-            vel.y += gravity * gravity_scale
-            if max_fall is not None and vel.y > max_fall:
-                vel.y = max_fall
-            points.append((int(pos.x), int(pos.y)))
-            if pos.y >= GROUND_Y or pos.x < 0 or pos.x > SCREEN_WIDTH:
-                break
-
-        return points
 
     def _plot_path(self, points: list[tuple[int, int]], color: tuple[int, int, int]) -> None:
         if len(points) < 2:

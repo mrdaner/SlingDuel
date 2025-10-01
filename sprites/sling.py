@@ -121,136 +121,142 @@ class Sling(pygame.sprite.Sprite):
         now = pygame.time.get_ticks()
 
         if self.state == "flying":
-            self._apply_gravity()
-            self.rect.x += self.velocity.x
-            self.rect.y += self.velocity.y
-            self.travelled += self.velocity.length()
-
-            allow_attach = (
-                now >= self.attach_enabled_at_ms or
-                self.travelled >= self.MIN_TRAVEL_BEFORE_ATTACH
-            )
-
-            # Ceiling attachment mirrors how bananas collide with the level top cap.
-            if allow_attach and self.rect.top <= 0:
-                self.rect.top = 0
-                self.attach()
-                return
-
-            # Ground checks use the same bottom alignment as banana landings.
-            if allow_attach and self.rect.bottom >= GROUND_Y:
-                self.rect.bottom = GROUND_Y
-                self.attach()
-                return
-
-            # Platforms treat the top surface as sticky; any other collision simply despawns.
-            if allow_attach and platforms:
-                hit = pygame.sprite.spritecollideany(self, platforms)
-                if hit:
-                    self.rect.bottom = hit.stand_rect.top
-                    self.attach()
-                return
-
-            # If the hook leaves the screen before hitting anything, remove it quietly.
-            if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
-                self._detach()
-
+            self._update_flying(now, platforms)
         elif self.state == "attached":
-            # Safety auto-detach adds an upper bound in case the owner never releases the key.
-            if self.attached_at_ms and now - self.attached_at_ms >= self.DETACH_SAFETY_MS:
-                self._apply_release_impulse()
-                self._detach()
-                return
-
-            if self.owner and self.anchor and self.rope_len:
-                oc = pygame.Vector2(self.owner.rect.center)
-                an = pygame.Vector2(self.anchor)
-                v = oc - an
-                if v.length_squared() == 0:
-                    v = pygame.Vector2(0.001, 0.001)
-
-                # Recompute pendulum parameters from the owner's current location.
-                self.theta = math.atan2(v.x, v.y if v.y != 0 else 1)
-
-                prev_center = pygame.Vector2(self.owner.rect.center)
-
-                snapped = False
-                target_center = None
-
-                if self.pull_mode:
-                    # Reel mode shortens rope length a little each tick to drag the player inward.
-                    desired_len = self.rope_len - self.reel_distance
-                    if self.rope_len > self.min_rope_len and desired_len < self.min_rope_len:
-                        self.rope_len = self.min_rope_len
-                    else:
-                        self.rope_len = max(1.0, desired_len)
-
-                    to_anchor = an - oc
-                    dist = to_anchor.length()
-                    if dist > 0:
-                        snap_threshold = self.owner.rect.height * self.snap_height_factor
-                        if dist <= snap_threshold and an.y >= 0:
-                            target_center = self._snap_owner_to_surface(an)
-                            snapped = True
-                        else:
-                            step = min(self.pull_speed, dist)
-                            to_anchor.scale_to_length(step)
-                            new_pos = oc + to_anchor
-                            offset = new_pos - an
-                            if offset.length() > self.rope_len:
-                                offset.scale_to_length(self.rope_len)
-                                new_pos = an + offset
-                            target_center = new_pos
-                    else:
-                        target_center = self._snap_owner_to_surface(an)
-                        snapped = True
-
-                    if not snapped:
-                        self.owner.on_platform = False
-                        self.motion_mode = "pull"
-                    else:
-                        self.motion_mode = "snapped"
-                        self._auto_detach_on_snap()
-                else:
-                    # When not pulling, integrate a light pendulum swing with damping.
-                    g = self.swing_gravity
-                    self.omega += (g / self.rope_len) * math.sin(self.theta)
-                    self.omega *= 0.985  # slightly less damping to keep momentum
-                    self.theta -= self.omega
-
-                    # Clamp the owner to the rope circle so the swing never stretches the constraint.
-                    new_rel = pygame.Vector2(math.sin(self.theta), math.cos(self.theta)) * self.rope_len
-                    target_center = an + new_rel
-                    self.owner.on_platform = False
-                    self.motion_mode = "swing"
-
-                center_vec = None
-                if target_center is not None and not snapped:
-                    center_vec = pygame.Vector2(target_center)
-                    self.owner.rect.centerx = int(target_center.x)
-                    self.owner.rect.centery = int(target_center.y)
-
-                new_center = pygame.Vector2(self.owner.rect.center)
-                if not snapped:
-                    if center_vec is None:
-                        center_vec = pygame.Vector2(new_center)
-                    self.rope_len = max(1.0, (center_vec - an).length())
-                if snapped:
-                    self.owner_velocity.update(0, 0)
-                else:
-                    if center_vec is None:
-                        center_vec = pygame.Vector2(new_center)
-                    self.owner_velocity = center_vec - prev_center
-                self.owner.gravity = 0
-                self.owner.speed = 0
-
-                # If the player released the hook button and the minimum stick time passed, detach.
-                if self.release_requested and self._can_detach():
-                    self._apply_release_impulse()
-                    self._detach()
-
+            self._update_attached(now, platforms)
         elif self.state == "done":
             self.kill()
+
+    def _update_flying(self, now: int, platforms: pygame.sprite.Group | None) -> None:
+        self._apply_gravity()
+        self.rect.x += self.velocity.x
+        self.rect.y += self.velocity.y
+        self.travelled += self.velocity.length()
+
+        allow_attach = (
+            now >= self.attach_enabled_at_ms or
+            self.travelled >= self.MIN_TRAVEL_BEFORE_ATTACH
+        )
+
+        # Ceiling attachment mirrors how bananas collide with the level top cap.
+        if allow_attach and self.rect.top <= 0:
+            self.rect.top = 0
+            self.attach()
+            return
+
+        # Ground checks use the same bottom alignment as banana landings.
+        if allow_attach and self.rect.bottom >= GROUND_Y:
+            self.rect.bottom = GROUND_Y
+            self.attach()
+            return
+
+        # Platforms treat the top surface as sticky; any other collision simply despawns.
+        if allow_attach and platforms:
+            hit = pygame.sprite.spritecollideany(self, platforms)
+            if hit:
+                self.rect.bottom = hit.stand_rect.top
+                self.attach()
+                return
+
+        # If the hook leaves the screen before hitting anything, remove it quietly.
+        if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
+            self._detach()
+
+    def _update_attached(self, now: int, platforms: pygame.sprite.Group | None) -> None:
+        # Safety auto-detach adds an upper bound in case the owner never releases the key.
+        if self.attached_at_ms and now - self.attached_at_ms >= self.DETACH_SAFETY_MS:
+            self._apply_release_impulse()
+            self._detach()
+            return
+
+        if not (self.owner and self.anchor and self.rope_len):
+            return
+
+        oc = pygame.Vector2(self.owner.rect.center)
+        an = pygame.Vector2(self.anchor)
+        v = oc - an
+        if v.length_squared() == 0:
+            v = pygame.Vector2(0.001, 0.001)
+
+        # Recompute pendulum parameters from the owner's current location.
+        self.theta = math.atan2(v.x, v.y if v.y != 0 else 1)
+
+        prev_center = pygame.Vector2(self.owner.rect.center)
+
+        snapped = False
+        target_center = None
+
+        if self.pull_mode:
+            # Reel mode shortens rope length a little each tick to drag the player inward.
+            desired_len = self.rope_len - self.reel_distance
+            if self.rope_len > self.min_rope_len and desired_len < self.min_rope_len:
+                self.rope_len = self.min_rope_len
+            else:
+                self.rope_len = max(1.0, desired_len)
+
+            to_anchor = an - oc
+            dist = to_anchor.length()
+            if dist > 0:
+                snap_threshold = self.owner.rect.height * self.snap_height_factor
+                if dist <= snap_threshold and an.y >= 0:
+                    target_center = self._snap_owner_to_surface(an)
+                    snapped = True
+                else:
+                    step = min(self.pull_speed, dist)
+                    to_anchor.scale_to_length(step)
+                    new_pos = oc + to_anchor
+                    offset = new_pos - an
+                    if offset.length() > self.rope_len:
+                        offset.scale_to_length(self.rope_len)
+                        new_pos = an + offset
+                    target_center = new_pos
+            else:
+                target_center = self._snap_owner_to_surface(an)
+                snapped = True
+
+            if not snapped:
+                self.owner.on_platform = False
+                self.motion_mode = "pull"
+            else:
+                self.motion_mode = "snapped"
+                self._auto_detach_on_snap()
+        else:
+            # When not pulling, integrate a light pendulum swing with damping.
+            g = self.swing_gravity
+            self.omega += (g / self.rope_len) * math.sin(self.theta)
+            self.omega *= 0.985  # slightly less damping to keep momentum
+            self.theta -= self.omega
+
+            # Clamp the owner to the rope circle so the swing never stretches the constraint.
+            new_rel = pygame.Vector2(math.sin(self.theta), math.cos(self.theta)) * self.rope_len
+            target_center = an + new_rel
+            self.owner.on_platform = False
+            self.motion_mode = "swing"
+
+        center_vec = None
+        if target_center is not None and not snapped:
+            center_vec = pygame.Vector2(target_center)
+            self.owner.rect.centerx = int(target_center.x)
+            self.owner.rect.centery = int(target_center.y)
+
+        new_center = pygame.Vector2(self.owner.rect.center)
+        if not snapped:
+            if center_vec is None:
+                center_vec = pygame.Vector2(new_center)
+            self.rope_len = max(1.0, (center_vec - an).length())
+        if snapped:
+            self.owner_velocity.update(0, 0)
+        else:
+            if center_vec is None:
+                center_vec = pygame.Vector2(new_center)
+            self.owner_velocity = center_vec - prev_center
+        self.owner.gravity = 0
+        self.owner.speed = 0
+
+        # If the player released the hook button and the minimum stick time passed, detach.
+        if self.release_requested and self._can_detach():
+            self._apply_release_impulse()
+            self._detach()
 
     # ---- internal helpers ----
     def _snap_owner_to_surface(self, anchor_vec: pygame.Vector2) -> pygame.Vector2 | None:
