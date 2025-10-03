@@ -172,6 +172,8 @@ class Banana(Throwable):
         self._stepped_once = True
         if hasattr(player, "take_damage"):
             player.take_damage(self.damage_step)
+        if hasattr(player, "start_slip_animation"):
+            player.start_slip_animation()
         self.state = "splatted_temp"
         self._rotate_splat_image(90)
         self.despawn_at_ms = pygame.time.get_ticks() + 750  # 0.75s

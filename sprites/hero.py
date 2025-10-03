@@ -26,7 +26,7 @@ class Hero(pygame.sprite.Sprite):
                  name="Player", name_color=(255,255,255), *, facing_right: bool = True):
         super().__init__()
 
-        stand, self.hero_run, self.hero_jump, self.hero_throw = get_hero_frames()
+        stand, self.hero_run, self.hero_jump, self.hero_throw, self.hero_fall = get_hero_frames()
         self.hero_stand = stand
 
         self.name = name
@@ -46,9 +46,16 @@ class Hero(pygame.sprite.Sprite):
         self.hero_run_index = 0.0
         self.hero_jump_index = 0.0
         self.hero_throw_index = 0.0
+        self.hero_fall_index = 0.0
         self.is_throwing = False
+        self.is_slipping = False
+        self._slip_until = 0
+        self._slip_start = 0
+        self._slip_duration = 0
         self.world: "GameWorld" | None = None
         self.last_input_at = 0
+        self.hit_stars_until = 0
+        self.hit_stars_start = 0
 
         self.image = self.hero_stand
         self.rect = self.image.get_rect(midbottom=(start_x, GROUND_Y))
@@ -61,6 +68,7 @@ class Hero(pygame.sprite.Sprite):
         self.health = float(self.max_health)
         self.missed_banana_streak = 0
         self.has_landed_direct_banana_hit = False
+        self.has_self_hit = False
 
         # Aim reticle rotates around the hero; shrink radius to keep targets readable.
         self.aim_radius = int(150 * 0.7)
@@ -107,6 +115,11 @@ class Hero(pygame.sprite.Sprite):
         if self.infinite_bananas and not self.has_banana and now >= self._banana_refill_time:
             self.has_banana = True
 
+        if self.is_slipping:
+            self.speed = 0
+            self._pending_throw = False
+            return
+
         # Only allow the jump key to fire when feet are planted or on a platform.
         jump_key = self.controls.get("jump")
         if jump_key is not None and keys[jump_key] and (self.rect.bottom >= GROUND_Y or self.on_platform):
@@ -142,8 +155,13 @@ class Hero(pygame.sprite.Sprite):
             and not self._pending_throw
         ):
             dir_vec = self._aim_direction()
+            launch_vec = pygame.Vector2(dir_vec.x, dir_vec.y - 0.35)
+            if launch_vec.length_squared() == 0:
+                launch_vec = dir_vec
+            else:
+                launch_vec = launch_vec.normalize()
             self._start_throw_animation()
-            self._throw_velocity = dir_vec * BANANA_THROW_SPEED
+            self._throw_velocity = launch_vec * BANANA_THROW_SPEED
             self._pending_throw = True
             self.has_banana = False  # consume now
             if self.infinite_bananas:
@@ -202,6 +220,9 @@ class Hero(pygame.sprite.Sprite):
             hits = pygame.sprite.spritecollide(self, platforms, False)
             for plat in hits:
                 top = plat.stand_rect.top
+                inner = self.banana_hitbox()
+                if inner.right <= plat.stand_rect.left or inner.left >= plat.stand_rect.right:
+                    continue
                 # from above: previous bottom was above the top stand line
                 if prev_bottom <= top and self.rect.bottom >= top:
                     self.rect.bottom = top
@@ -212,6 +233,11 @@ class Hero(pygame.sprite.Sprite):
 
     def move_horizontal(self):
         total = self.speed + self._hook_momentum_x + self._hook_momentum_remainder
+        if self.is_slipping:
+            duration = max(1, self._slip_duration)
+            elapsed = max(0, pygame.time.get_ticks() - self._slip_start)
+            progress = min(1.0, elapsed / duration)
+            total = self._slip_initial_velocity * (1.0 - progress)
         dx = int(total)
         self._hook_momentum_remainder = total - dx
         self.rect.x += dx
@@ -239,6 +265,11 @@ class Hero(pygame.sprite.Sprite):
 
     def animate(self):
         frame = self.hero_stand
+        prev_midbottom = self.rect.midbottom
+        now = pygame.time.get_ticks()
+
+        if self.is_slipping and now >= self._slip_until:
+            self.is_slipping = False
 
         if self.is_throwing:
             self.hero_throw_index += 0.2
@@ -249,7 +280,15 @@ class Hero(pygame.sprite.Sprite):
                 frame = self.hero_throw[int(self.hero_throw_index)]
 
         if not self.is_throwing:
-            if self.rect.bottom == GROUND_Y or self.on_platform:
+            if self.is_slipping:
+                if self.hero_fall:
+                    duration = max(1, self._slip_duration)
+                    elapsed = max(0, now - self._slip_start)
+                    progress = min(0.999, elapsed / duration)
+                    idx = min(len(self.hero_fall) - 1, int(progress * len(self.hero_fall)))
+                    self.hero_fall_index = float(idx)
+                    frame = self.hero_fall[idx]
+            elif self.rect.bottom == GROUND_Y or self.on_platform:
                 if self.speed != 0:
                     self.hero_run_index = (self.hero_run_index + 0.4) % len(self.hero_run)
                     frame = self.hero_run[int(self.hero_run_index)]
@@ -259,7 +298,9 @@ class Hero(pygame.sprite.Sprite):
                 self.hero_jump_index = (self.hero_jump_index + 0.1) % len(self.hero_jump)
                 frame = self.hero_jump[int(self.hero_jump_index)]
 
-        self.image = frame if self.facing_right else pygame.transform.flip(frame, True, False)
+        frame_to_use = frame if self.facing_right else pygame.transform.flip(frame, True, False)
+        self.image = frame_to_use
+        self.rect = self.image.get_rect(midbottom=prev_midbottom)
 
     # ------------------- helpers -------------------
     def get_aim_pos(self) -> tuple[int, int]:
@@ -290,6 +331,29 @@ class Hero(pygame.sprite.Sprite):
         if hitbox.width <= 0 or hitbox.height <= 0:
             return self.rect.copy()
         return hitbox
+
+    def pickup_hitbox(self) -> pygame.Rect:
+        rect = self.banana_hitbox()
+        rect.height //= 2
+        rect.top = rect.bottom
+        return rect
+
+    def start_slip_animation(self, duration_ms: int = 400) -> None:
+        if not self.hero_fall:
+            return
+        self.is_slipping = True
+        self.hero_fall_index = 0.0
+        self._slip_duration = max(1, duration_ms)
+        self._slip_start = pygame.time.get_ticks()
+        self._slip_until = self._slip_start + self._slip_duration
+        direction = 0.0
+        if abs(self.speed) > 0.1:
+            direction = math.copysign(1.0, self.speed)
+        elif abs(self._hook_momentum_x) > 0.1:
+            direction = math.copysign(1.0, self._hook_momentum_x)
+        if direction == 0.0:
+            direction = 1.0 if self.facing_right else -1.0
+        self._slip_initial_velocity = direction * 12.0
 
     def _finish_hook(self):
         """Mark the hook as finished and clear state."""
@@ -328,7 +392,17 @@ class Hero(pygame.sprite.Sprite):
         self._banana_refill_time = 0
         self.missed_banana_streak = 0
         self.has_landed_direct_banana_hit = False
+        self.has_self_hit = False
         self.last_input_at = 0
+        self.hit_stars_until = 0
+        self.hit_stars_start = 0
+        self.is_slipping = False
+        self._slip_until = 0
+        self._slip_start = 0
+        self._slip_duration = 0
+        self._slip_initial_velocity = 0.0
+        self._slip_initial_velocity = 0.0
+        self.hero_fall_index = 0.0
         self._throw_prev = False
 
         # hook state
@@ -351,6 +425,7 @@ class Hero(pygame.sprite.Sprite):
     def register_banana_hit(self) -> None:
         self.missed_banana_streak = 0
         self.has_landed_direct_banana_hit = True
+        self.has_self_hit = True
 
     @property
     def is_dead(self) -> bool:

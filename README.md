@@ -44,7 +44,7 @@ Press **ESC** to pause, **K** to remap controls, **T** to toggle test overlays.
 - Banana icon lights up when you have ammo.
 - Hook icon appears when the grapple is off cooldown.
 - Bananas spawn up to **3** at a time. Ground bananas unlock only after several platform spawns to keep play vertical.
-- Health pickups spawn on upper platforms only when someone is **≤3 HP**.
+- Health pickups restore **1.0 HP** and spawn on upper platforms only when someone is **≤2.5 HP**.
 
 ### Pause & Test Mode
 

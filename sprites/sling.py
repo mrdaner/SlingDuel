@@ -150,13 +150,15 @@ class Sling(pygame.sprite.Sprite):
             self.attach()
             return
 
-        # Platforms treat the top surface as sticky; any other collision simply despawns.
+        # Platforms only allow attachment when the hook hits the standable top surface.
         if allow_attach and platforms:
-            hit = pygame.sprite.spritecollideany(self, platforms)
-            if hit:
-                self.rect.bottom = hit.stand_rect.top
-                self.attach()
-                return
+            hits = pygame.sprite.spritecollide(self, platforms, False)
+            for plat in hits:
+                overlap = self.rect.clip(plat.stand_rect)
+                if overlap.width > 0 and overlap.height > 0:
+                    self.rect.center = overlap.center
+                    self.attach()
+                    return
 
         # If the hook leaves the screen before hitting anything, remove it quietly.
         if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:

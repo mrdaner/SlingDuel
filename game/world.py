@@ -29,7 +29,7 @@ class Players:
 class GameWorld:
     """Owns sprite groups, player references, and round lifecycle helpers."""
 
-    _SELF_HIT_ACTIVITY_WINDOW_MS = 15000
+    _SELF_HIT_ACTIVITY_WINDOW_MS = 10000
 
     def __init__(self, *, test_mode: bool = False) -> None:
         self.players = Players(*self._create_players())
@@ -130,16 +130,18 @@ class GameWorld:
     # ------------------------------------------------------------------
     def _collect_pickups(self) -> None:
         for player in self.players:
+            pickup_rect = player.pickup_hitbox()
             if not player.has_banana:
-                hit = pygame.sprite.spritecollideany(player, self.banana_pickups)
+                hit = next((p for p in self.banana_pickups if pickup_rect.colliderect(p.rect)), None)
                 if hit:
                     player.has_banana = True
                     hit.kill()
 
         for player in self.players:
-            hit = pygame.sprite.spritecollideany(player, self.health_pickups)
+            pickup_rect = player.pickup_hitbox()
+            hit = next((p for p in self.health_pickups if pickup_rect.colliderect(p.rect)), None)
             if hit:
-                player.health = min(MAX_HEALTH, player.health + 0.5)
+                player.health = min(MAX_HEALTH, player.health + 1.0)
                 hit.kill()
 
     def _handle_projectile_hits(self) -> None:
@@ -150,13 +152,18 @@ class GameWorld:
                 if projectile.rect.colliderect(player.banana_hitbox()):
                     projectile.on_hit(player)
                     if isinstance(projectile, Banana):
+                        now = pygame.time.get_ticks()
+                        player.hit_stars_start = now
+                        player.hit_stars_until = now + 1000
                         owner = getattr(projectile, "owner", None)
                         if owner is player:
                             if not self.test_mode:
+                                owner.has_self_hit = True
                                 if self.handle_banana_miss(owner):
                                     if (
-                                        owner.missed_banana_streak >= 5
+                                        owner.missed_banana_streak >= 7
                                         and not getattr(owner, "has_landed_direct_banana_hit", False)
+                                        and not getattr(owner, "has_self_hit", False)
                                         and self.on_self_banana_hit
                                     ):
                                         self.on_self_banana_hit(player)
@@ -175,7 +182,8 @@ class GameWorld:
         for splat in splats:
             hitbox = splat.rect.inflate(10, 6)
             for player in self.players:
-                if hitbox.colliderect(player.banana_hitbox()):
+                pickup_rect = player.pickup_hitbox()
+                if hitbox.colliderect(pickup_rect):
                     splat.stepped_on_by(player)
 
         ground_splats = [s for s in splats if s.rect.bottom == GROUND_Y]
@@ -203,7 +211,7 @@ class GameWorld:
         for hero in (self.players.first, self.players.second):
             hero.infinite_bananas = self.test_mode
             hero._banana_refill_time = 0
-            if self.test_mode and not hero.has_banana:
+            if hero.infinite_bananas and not hero.has_banana:
                 hero.has_banana = True
 
     # ------------------------------------------------------------------
@@ -216,14 +224,11 @@ class GameWorld:
         other_active = bool(last_input) and (
             pygame.time.get_ticks() - last_input <= self._SELF_HIT_ACTIVITY_WINDOW_MS
         )
-
         if other_active:
-            owner.missed_banana_streak = min(owner.missed_banana_streak + 1, 5)
+            owner.missed_banana_streak = min(owner.missed_banana_streak + 1, 7)
             return True
 
         owner.missed_banana_streak = 0
         return False
-
-
 
 __all__ = ["GameWorld"]

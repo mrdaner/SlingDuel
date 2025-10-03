@@ -146,7 +146,7 @@ class PickupSpawner:
 
     def _players_need_health(self) -> bool:
         for player in self._players:
-            if getattr(player, "health", None) is not None and player.health <= 3:
+            if getattr(player, "health", None) is not None and player.health <= 2.5:
                 return True
         return False
 

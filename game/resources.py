@@ -13,6 +13,7 @@ from assets import (
     get_heart,
     get_heart_half,
     get_hook_image,
+    get_stars_image,
     get_target,
 )
 
@@ -58,6 +59,7 @@ class GameResources:
     banana_icon: pygame.Surface
     banana_splash: pygame.Surface
     hook_icon: pygame.Surface
+    hit_stars_frames: tuple[pygame.Surface, ...]
     self_hit_message: str
     self_hit_banner: str
     heart_padding: int = 20
@@ -67,6 +69,16 @@ class GameResources:
     def load(cls) -> "GameResources":
         sky, ground = get_background()
         target = get_target()
+        stars = get_stars_image()
+        stars_frames: tuple[pygame.Surface, ...]
+        if stars:
+            rotated_90 = pygame.transform.rotate(stars, 90)
+            rotated_180 = pygame.transform.rotate(stars, 180)
+            rotated_270 = pygame.transform.rotate(stars, 270)
+            stars_frames = (stars, rotated_90, rotated_180, rotated_270)
+        else:
+            stars_frames = tuple()
+
         return cls(
             game_font=get_font(size=100),
             name_font=get_font(size=36),
@@ -79,6 +91,7 @@ class GameResources:
             banana_icon=get_banana_image(),
             banana_splash=get_banana_splashed(),
             hook_icon=get_hook_image(),
+            hit_stars_frames=stars_frames,
             self_hit_message=_overlay_slot(),
             self_hit_banner=_overlay_slot(_HUD_BUFFER_ALT),
         )

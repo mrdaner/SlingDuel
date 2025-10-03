@@ -144,6 +144,7 @@ class GameSceneRenderer:
         self._draw_hook_icons(world)
 
         world.player_group.draw(self.screen)
+        self._draw_hit_stars(world)
         world.throwables.draw(self.screen)
         self._draw_name_tags(world)
         self._draw_hooks(world)
@@ -404,6 +405,27 @@ class GameSceneRenderer:
         pygame.draw.rect(self.screen, standable_color, ground_rect, 2)
         for hook in world.hooks.sprites():
             pygame.draw.rect(self.screen, red, hook.rect, 2)
+        pickup_color = (255, 180, 100)
+        for hero in world.players:
+            pygame.draw.rect(self.screen, pickup_color, hero.pickup_hitbox(), 2)
+
+    def _draw_hit_stars(self, world: GameWorld) -> None:
+        frames = getattr(self.resources, "hit_stars_frames", ())
+        if not frames:
+            return
+        now = pygame.time.get_ticks()
+        for hero in world.players:
+            start = getattr(hero, "hit_stars_start", 0)
+            end = getattr(hero, "hit_stars_until", 0)
+            if end <= now:
+                continue
+            duration = max(1, end - start)
+            elapsed = max(0, now - start)
+            slice_length = duration / len(frames)
+            index = min(len(frames) - 1, int(elapsed / slice_length))
+            sprite = frames[index]
+            rect = sprite.get_rect(midtop=(hero.rect.centerx + 6, hero.rect.top + 3))
+            self.screen.blit(sprite, rect)
 
     def _draw_trajectories(self, world: GameWorld) -> None:
         if not world.is_test_mode:
@@ -413,7 +435,14 @@ class GameSceneRenderer:
             start = pygame.Vector2(player.rect.center)
             aim_dir = player._aim_direction()
 
-            banana_velocity = aim_dir * BANANA_THROW_SPEED
+            launch_vec = pygame.Vector2(aim_dir.x, aim_dir.y - 0.35)
+            if launch_vec.length_squared() == 0:
+                launch_vec = aim_dir
+            else:
+                launch_vec = launch_vec.normalize()
+
+            banana_velocity = launch_vec * BANANA_THROW_SPEED
+            banana_velocity.y += PROJECTILE_GRAVITY
             banana_path = simulate_trajectory(
                 start,
                 banana_velocity,

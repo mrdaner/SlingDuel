@@ -50,7 +50,12 @@ def get_hero_frames():
         _scale(load_image(hero_dir / "Hero_throw_1.png")),
         _scale(load_image(hero_dir / "Hero_throw_2.png")),
     ]
-    return stand, run, jump, throw
+    fall = [
+        _scale(load_image(hero_dir / "Hero_fall_1.png")),
+        _scale(load_image(hero_dir / "Hero_fall_2.png")),
+        _scale(load_image(hero_dir / "Hero_fall_3.png")),
+    ]
+    return stand, run, jump, throw, fall
 
 def get_target():
     surf = load_image(_ASSET_ROOT / "Target.png")
@@ -72,6 +77,9 @@ def get_banana_splashed():
 
 def get_hook_image() -> pygame.Surface:
     return _scale(load_image(_ASSET_ROOT / "Hook.png"))
+
+def get_stars_image() -> pygame.Surface:
+    return _scale(load_image(_ASSET_ROOT / "Stars.png"))
 
 def get_floor_images() -> list[pygame.Surface]:
     """Return Floor_1..4 surfaces, scaled overall and then enlarged by 1.5x."""

@@ -12,8 +12,8 @@ from .resources import GameResources
 from .view import GameSceneRenderer
 from .world import GameWorld
 
-# Temporary flag while iterating on player self-hit feedback overlays.
-ENABLE_SELF_FEEDBACK_EXPERIMENT = True
+
+screen_buffer = True
 
 
 @dataclass(frozen=True)
@@ -236,7 +236,7 @@ class Game:
             self.paused = False
 
     def _trigger_self_hit_modal(self, hero: Hero) -> None:
-        if self.test_mode or not ENABLE_SELF_FEEDBACK_EXPERIMENT:
+        if self.test_mode or not screen_buffer:
             return
         if self.self_hit_modal_active:
             return
